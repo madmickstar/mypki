@@ -67,6 +67,11 @@ release that does not exist.
   REVOKED answers, 0 times once the search was cut at the signature's AlgorithmIdentifier). §11 STEP F now runs `openssl`
   — six assertions, WARNing when the binary is absent — including `verify -crl_check` with no `different CRL scope`, which
   re-derives `crl.py`'s decision to omit an IssuingDistributionPoint instead of quoting a measurement for it.
+- **A fifth stale measurement, found in prose rather than in an assertion.** SMOKE_TESTING §2 claimed `GET /static/style.css`
+  serves **28,152 B** on this build and is byte-identical to the shipped 0.7.0 asset. Measured here it answers 200 with
+  **28,827 bytes** (sha256 `3d7a609…`, and the same 28,827 at every commit in this tree), while the extracted 0.7.0 zip holds
+  28,152 B (`d4b7468…`): the "re-measured on this build" line had itself been carried over from 0.7.0. No assertion reads a
+  stylesheet size, so nothing was catching it — the corrected text states both numbers and names which release each belongs to.
 
 ## [0.7.1] - 2026-11-05
 

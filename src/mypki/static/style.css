@@ -10,7 +10,7 @@
  * the selection counter, the revoke modal). What did NOT change is what this consequence means for CSS: a rule may *style* a
  * state the script toggles, but nothing on any page may depend on it. Every block below that mentions `.js-enhanced`,
  * `data-mypki-*` or the modal is decoration over a flow that already works server-side — and the server-side version of each
- * of those flows is what the tests and both smoke harnesses actually exercise.
+ * of those flows is what the tests and tools/e2e_harness.py actually exercise.
  *
  * Layout follows the yt-dlp portal pattern (a fixed left sidebar carrying identity, navigation and version; a main column of
  * cards), and the colours follow the "strata" reference: near-black page, dark hairline-bordered cards, green for

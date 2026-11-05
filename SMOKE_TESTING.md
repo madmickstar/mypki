@@ -200,7 +200,7 @@ looks like, so the five new assertions are all about the **served asset**: `GET 
 browser refuses a stylesheet served as `text/plain`); its response carries the same CSP as the pages; the file defines `.pending-saved {`;
 and that rule reuses the palette's existing `--rose` rather than introducing a colour. MEASURED **on the 0.5.0 build**,
 which is the release that added these five
-assertions: 25,845 bytes served (0.4.0's was 24,292). This build serves 28,152 — measured below, not inherited.
+assertions: 25,845 bytes served (0.4.0's was 24,292). This build serves 28,827 — MEASURED below, not inherited.
 
 **0.5.2 adds five more assertions to this section, for the same reason.** An operator reported that `/inspect`'s PEM paste box rendered
 narrower than every other section on its own page; the fix is CSS (page-map §13), and a harness with no browser cannot assert what the box
@@ -210,12 +210,17 @@ max-width: none; }` (the box itself), `form.inspect-form button.save-settings { 
 **zero-count** assertion that `.settings-form .field textarea` appears nowhere — the guard against a fix scoped to `/inspect` leaking into
 `/settings`, which is precisely the mistake a browser-less harness cannot otherwise see — and `GET /inspect` carrying
 `class="settings-form stacked inspect-form"` exactly once, because a CSS rule whose class is missing from the markup styles nothing. The GET
-itself is not an assertion; only its class count is. **Re-measured on this build: 28,152 bytes served**, and the asset
-behind it is byte-identical in the tested tree and in
-the shipped zip (`src/mypki/static/style.css`, 28,152 B, sha256 `d4b7468bbaa3c8…` in both `/home/user/mypki/build` and
-`/tmp/extract-070/mypki-0.7.0`), so this number is
-this build's rather than 0.5.2's inherited one (0.5.1's was 25,845). What remains
-unmeasurable is the rendering, and these labels say "the served stylesheet defines", never "the page looks like".
+itself is not an assertion; only its class count is. **MEASURED on this build: `GET /static/style.css` answers 200 with
+28,827 bytes** (`content-length` and the body length agree; sha256 `3d7a609619970d…`; `wc -c src/mypki/static/style.css`
+is the same 28,827 at every commit in this tree). The shipped **0.7.0** zip carries a different asset —
+`/tmp/extract-070/mypki-0.7.0/src/mypki/static/style.css`, **28,152 B**, sha256 `d4b7468bbaa3c8…` — 675 bytes smaller than
+this tree's asset, the difference having arrived with 0.7.1 rather than with any CSS edit made here (the file is already 28,827
+in this tree's baseline commit). An earlier draft of this file quoted **28,152** as "re-measured on this build" and asserted the
+two assets were byte-identical. They are not, which is why the number above was measured from a request rather than copied from
+the release: a "MEASURED on this build" line that had been carried over from 0.7.0 is exactly the failure mode this section warns
+about, and nothing caught it because **no assertion here reads a stylesheet size** — §2's twenty assertions are rule-text and
+class assertions, so a stale byte count could sit in the prose unchallenged. What remains unmeasurable is the rendering, and
+these labels say "the served stylesheet defines", never "the page looks like".
 
 **What this section does not and cannot assert:** that a copy button worked. No browser exists on the host these notes were
 written on, `navigator.clipboard` needs a secure context, and on plain HTTP the script falls back to `execCommand('copy')` while

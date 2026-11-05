@@ -82,3 +82,6 @@ issued.db-*
 *.crt
 *.csr
 *.p12
+
+# scratch output from ad-hoc background runs (never a product artifact)
+nohup.out

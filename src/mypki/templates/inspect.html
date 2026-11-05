@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Inspect PEM{% endblock %}
+{# 0.5.0 (page-map §13): the one page that reads a PEM without trying to do anything with it.
+
+   The posture this template has to hold is unusual for this app: every other page parses a PEM in order to *use* it, and
+   refuses it when it fails a rule. Here nothing is refused, so there is no error surface to render — no amber
+   `.form-errors` block, no status page, no "fix this and submit again". A certificate mypki would never issue still gets
+   a full table, and the findings appear as `.finding` rows under it. That is why this file has no `{% if problems %}`:
+   `app.inspect_submit` catches every parse failure and hands it to `mypki.inspect` as a report, so by the time a template
+   sees anything, it is already a description.
+
+   What the page must NOT be able to say, and does not: that a chain verifies, that an issuer is trusted, or that a
+   certificate is unrevoked. From 0.7.0 this host publishes a CRL and answers OCSP, but `/inspect` consults neither — it
+   reads the pasted document and nothing else, and it has no trust store. The strongest CA-shaped claim available is
+   therefore still the one inside the document itself, rendered as `BasicConstraints`. #}
+{% block content %}
+
+<h1>Inspect a PEM</h1>
+
+<p class="lede">
+Paste a certificate or a certificate signing request and read what it actually says: subject, issuer, SANs, key and its
+size, validity window, serial, fingerprint and signature algorithm — plus the things that matter out loud, like
+<em>expired</em>, <em>self-signed</em>, <em>not a CA</em> or <em>signed with SHA-1</em>. This page never refuses anything
+and never changes anything: it is a reader, not a verifier.
+</p>
+
+<section class="card">
+  <h2>What this page cannot tell you</h2>
+  <ul class="profile-help">
+    <li><strong>It does not verify a chain.</strong> There is no trust store on this host and no issuer certificate to check
+      against, so it can name an issuer but cannot say that anybody trusts it.</li>
+    <li><strong>It does not know about revocation.</strong> This page reads the document you pasted and consults nothing
+      else: not <a href="/crl">this host's CRL</a>, not <code>/ocsp</code>, not any other CA's. A certificate reported as
+      valid here may still have been revoked by whoever issued it, and a certificate from another CA is not affected by
+      what this host published at all.</li>
+    <li><strong>Its findings are not gates.</strong> A SHA-1 signature or an RSA-1024 key is written down rather than
+      refused. The rules that do refuse live on <a href="/csr/sign">Sign a certificate</a>, which is the page that issues.</li>
+    <li><strong>A private key is named and not opened.</strong> Paste one by accident and this page says it is a key,
+      displays none of it, and does not attempt to decrypt it.</li>
+  </ul>
+</section>
+
+{# `settings-form stacked` is what 0.5.0 borrowed from /settings to get the uppercase label band and the hint styling.
+   `inspect-form` exists for one purpose: to scope the width rules in style.css to this page and this page alone, so the
+   paste box can span its section (page-map §13). Widening `.settings-form` instead would widen every field on /settings. #}
+<form method="post" action="/inspect" class="settings-form stacked inspect-form">
+  {{ csrf_field(request) | safe }}
+  <div class="field">
+    <label for="pem_paste">PEM</label>
+    <textarea id="pem_paste" name="pem_paste" rows="14" spellcheck="false"
+              placeholder="-----BEGIN CERTIFICATE-----&#10;MIID...&#10;-----END CERTIFICATE-----">{{ paste }}</textarea>
+    <p class="hint">A certificate, a CA certificate or a request. Up to {{ max_csr_chars }} characters; up to
+      {{ max_blocks }} blocks are described, and anything past that is counted rather than dropped.</p>
+  </div>
+  <button class="save-settings" type="submit">Inspect</button>
+</form>
+
+{# The echo above is the operator's own text with private-key bodies replaced. Saying so is not decoration: a page that
+   quietly rewrites what you pasted, with nothing on screen admitting it, is unreadable in exactly the way a settings page
+   that silently dropped a line would be (see `settingsfile.preserve_unmanaged`). #}
+{% if redacted_keys %}
+<p class="warning">
+  {{ redacted_keys }} private-key block(s) were in your paste. Their base64 is replaced above with
+  <span class="mono">{{ redaction_marker }}</span>; nothing from them was parsed, displayed or stored. The BEGIN/END lines are
+  kept so you can see that they were there.
+</p>
+{% endif %}
+
+{% if reports %}
+{% for report in reports %}
+<section class="card">
+  <h2>{{ report.kind }}{% if report.armour %} &mdash; <span class="mono">-----BEGIN {{ report.armour }}-----</span>{% endif %}</h2>
+
+  <table class="facts">
+    {% for label, value in report.facts %}
+    <tr>
+      <th scope="row">{{ label }}</th>
+      <td class="{% if label == 'SHA-256 fingerprint' or label == 'Serial (hex)' or label == 'BasicConstraints' %}mono wrap{% endif %}">{{ value }}</td>
+    </tr>
+    {% endfor %}
+    {% if report.sha256_of_der %}
+    <tr>
+      <th scope="row">SHA-256 of the DER</th>
+      <td class="mono wrap">{{ report.sha256_of_der }}</td>
+    </tr>
+    {% endif %}
+  </table>
+
+  {% if report.flags %}
+  <ul class="findings">
+    {% for flag in report.flags %}<li class="finding">{{ flag }}</li>{% endfor %}
+  </ul>
+  {% else %}
+  <p class="note">No findings: nothing about this document looks expired, self-signed, CA-shaped or below mypki's key and
+    hash rules. That is a description of what the document says, not a statement that it is trusted.</p>
+  {% endif %}
+
+  {% if report.pem %}
+  <h3>The block as parsed</h3>
+  <pre class="pem" id="pem-{{ loop.index }}">{{ report.pem }}</pre>
+  <p class="copy-row">
+    <button type="button" class="copy-pem" data-mypki-copy="pem-{{ loop.index }}" data-mypki-label="That PEM block">Copy to clipboard</button>
+  </p>
+  <p class="hint">Re-wrapped to 64-character lines. The DER inside is unchanged, which is why this copy and the fingerprint
+    above describe the same bytes whatever line endings the paste used.</p>
+  {% endif %}
+</section>
+{% endfor %}
+
+<p class="note">Compare a fingerprint against what your client shows after installation — that out-of-band comparison is
+the only thing here that proves you are looking at the same certificate on both machines.</p>
+{% else %}
+<p class="note">Nothing pasted yet. The form above writes nothing to disk and signs nothing; it reads the text you paste
+and reports what it says.</p>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,427 @@
+# Changelog
+
+All notable changes to mypki are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html). For this project the three numbers mean something concrete,
+because "breaking" has to be decidable by somebody reading a diff rather than argued in a release meeting:
+
+- **MAJOR** — a change an operator has to re-learn or re-install for: a route's form fields, a certificate profile
+  (`§7` of `docs/page-map.md`), the shape of a row in `issued.db`, or anything that makes an already-installed root CA
+  untrustworthy.
+- **MINOR** — backwards-compatible capability: a new page, a new `MYPKI_*` knob, a new CLI flag, a new profile field.
+- **PATCH** — a fix that changes nothing an operator has to re-learn: a validation message, a header, a path bug, a
+  dependency floor.
+
+## Version numbers are release-time facts, not working-commit facts
+
+Ordinary commits do not bump `__version__`. What advances per commit is git history; what advances per **release** is the
+number, because a version that changes on every commit answers no question — it cannot be cited in a bug report, pinned in
+a requirements file, or matched against a changelog section.
+
+The number lives on exactly one line, `src/mypki/__init__.py::__version__`, and everything else is derived from it:
+`pyproject.toml` declares `dynamic = ["version"]` (never a static version), hatchling reads that one line by static
+analysis, the `## [X.Y.Z]` heading below records that the release happened, and the annotated tag `vX.Y.Z` is what makes
+it reproducible. `tools/check_version.py` proves the chain agrees — exit 0 consistent, exit 1 drift, exit 2 *could not
+check*, which is never a pass. A section below is written **when its release is cut**, not before: a heading for a version
+that has not shipped is exactly what `check_version.py` reports as drift, because it reads to a user as a promise about a
+release that does not exist.
+
+## [0.7.1] - 2026-11-05
+
+Entries land under `## [Unreleased]` while work is in flight and move under a version heading when that release is cut; this
+section was written when 0.7.1 was cut, and what it records is one change on the sign page: **a refused paste is now answered where the operator is standing**. A step-A paste this CA will not
+sign used to render `templates/error.html` — a page with no form on it — and the operator had to click back and re-paste. It
+now re-renders `/csr/sign` itself, the reason named in red directly above "Paste a CSR (PEM)" with the paste still in the
+textarea, while the status stays 400 (malformed) or 403 (privilege claim). **A PATCH by this file's own definition** — "a fix that changes nothing an operator has to re-learn": no route changed its
+address or form fields, no `MYPKI_*` knob was added, no certificate profile in `docs/page-map.md` §7 moved, and no row of
+`issued.db` changed shape. The MINOR test ("a new page, a new `MYPKI_*` knob, a new CLI flag, a new profile field") is met by
+none of its four terms, which is why the number moves in the last place rather than the middle one. `__version__` is now 0.7.1,
+and this heading is what makes that legal: the rule is that the number and the section are written **in the same pass**, so
+`tools/check_version.py` reads a release rather than drift. Its measured evidence landed in one further pass, at the cut: the
+*Release evidence* subsection at the end of this section records the gates, the suite and the packaging checks this release was
+made against, and the two harness runs are recorded in [docs/measurement-history.md](docs/measurement-history.md) under
+*0.7.1 release evidence* — with their counts carried by [`reports/harness-ledger.md`](reports/harness-ledger.md) rather than by
+anything written here.
+
+### Added
+
+- **`app.py::_paste_refused`, the handler that keeps a refusal on its own page.** `csr_sign_submit` now catches its step-A
+  rejections (`CsrValidationError`, `KeyPolicyError`, `CaPrivilegeRequestedError`) and calls `_paste_refused`, which re-renders
+  `templates/csr_sign.html` with `<section class="form-errors refused">` **above**
+  `<label for="csr_pem">Paste a CSR (PEM)</label>`. Asserted as an ORDER in both harnesses and in
+  `tests/test_views.py::test_a_refused_paste_is_named_on_the_sign_page_above_the_box_it_belongs_to`: "the reason appears
+  somewhere in the body" is also true of a page that mentions it only in a nav link, so the block's line/offset has to precede
+  the label's. The handler names its own status mapping rather than inheriting one — **400** for `CsrValidationError`, **400**
+  for `KeyPolicyError`, **403** for `CaPrivilegeRequestedError` — identical to what `_register_error_handlers` chose, so a curl
+  or PowerShell script still reads "bad input" and "refused" as two different answers. Status is decided by *what was wrong*;
+  the surface by *where the fix can be typed*. The `log.info` lines are unchanged (`rejected input at …`,
+  `refused CA privilege at …`) — they are what the harnesses and an operator's log reader already depend on — and the reason
+  keeps its `<p class="reason">` class, so "read mypki's stated reason" remains one selector whichever surface rendered it.
+- **Four `sign_context` keys carry it** (`refused_reason`, `refused_hint`, `paste_value`, `paste_redacted`). All four are inert
+  on every ordinary render of the sign page (`None`, `None`, `""`, `0`) and are filled only by `_paste_refused`. They live in
+  `sign_context` rather than being spelled in the template for the same reason `consent_field` does (page-map §3 rule 6): a
+  name invented in a template is a name the handler that reads it cannot see.
+- **The paste survives, and the filtering of it is said out loud.** `csr_pem` returns through
+  `inspect.redact_private_key_bodies` — armour lines kept, a private key's base64 replaced with the marker — and
+  `paste_redacted` renders as a count when anything was filtered: *N private-key block(s) in your paste were **not** echoed
+  back*. Filtering what somebody pasted with nothing on screen saying so is the quiet edit this project refuses elsewhere (see
+  `settingsfile.preserve_unmanaged`), so the count is rendered rather than left implicit.
+- **`.form-errors.refused` in `--rose`** (`static/style.css`, three rules — the block, its `<h2>` and its `.reason`): the box
+  shape of the existing amber `.form-errors`, recoloured, because *nothing was written — fix this and submit again* and *this
+  request was refused* are different answers that happen to need the same layout. `--rose` is the colour this app already uses
+  for a refusal on `/inspect`; no new variable was introduced.
+- **Five link labels now read *Sign a certificate***, matching the sign page's own `<h1>`: `templates/error.html`,
+  `templates/about.html` (its `<dt>` and its `<dd>`), `templates/issued.html`, `templates/csr_generate.html` and
+  `templates/inspect.html`. The sidebar item in `templates/base.html` deliberately stays **Sign CSR** — it is the short nav
+  label, not the page title — and `tests/test_nav.py` is deliberately unchanged because that file asserts the sidebar wording.
+- **`tools/check_docstrings.py`, the gate that keeps release-time prose out of `src/`.** Three rules, each with an id a line
+  can name in a `# allow-docstring-rule: <id>` marker: `version-citation` (a `0.x.y` token or `pre-0.x.y` phrasing),
+  `one-run-probe` (`MEASURED`, or a scratch probe path under `/tmp/`) and `release-plan-tag` (`answer N`, or a parenthesised
+  version). It reads docstring lines and full-line comments only — decided from the AST, so a version inside a string literal
+  is behaviour rather than prose and stays unpoliced — and it covers `src/` alone, because a test named for a release it
+  reproduces and a checker's note about a pinned dependency are both facts that have to be written down somewhere. Stdlib-only
+  like `tools/check_version.py`, so the CI docs job can run it against a checkout with nothing installed. Exit codes: **0**
+  clean, **1** findings or a failed self-test, **2** usage error.
+
+### Changed
+
+- **What still reaches `error.html`, stated where it can be misread.** An oversized body (`SizeGuardMiddleware` refuses it
+  before any route runs, so there is no form to put a reason on), a missing or bad CSRF token, `/inspect` (which describes
+  rather than signs) and a bad address all keep mypki's error page at 400/403/413. The exception handlers for
+  `CsrValidationError` and `CaPrivilegeRequestedError` stay registered — they are the net for those errors raised on a route
+  with no form of their own to re-render, same status and same sentence.
+- **README's route table and page-map §0/§3 were rewritten in the same pass as the behaviour**, not after it: §0 gained a rule
+  row for the refused paste (reason on the sign page, status unmoved, only a refusal with *no form to put it on* renders
+  `error.html`), §0's error-page paragraph now says where this build reaches that page, §3's rule-6 bullet names the body that
+  carries a 403 as "the sign page with its own form still on it", and §3's panel sentence states that refused extensions are
+  answered at 403 **on this same page**.
+- **Release-time prose was moved out of `src/` docstrings rather than deleted**, and the move is recorded verbatim in
+  [docs/history/narrative.md](docs/history/narrative.md): the version citations and one-run probe notes that were *not*
+  already carried by a frozen history entry are copied there byte for byte, each with the docstring it belonged to, before the
+  living sentence was rewritten to state the invariant instead. The rewrite touched only docstrings and full-line comments — no
+  behaviour, no status code and no user-visible string moved, so this is the *Wording* class and neither harness script changed.
+  `app.py`'s module-docstring heading keeps its name and drops the version tag beside it, which is what lets
+  `ERROR_SURFACE_RULE` keep citing that heading while `tests/test_packaging.py` still counts exactly two spellings of it in the
+  module. The quoted phrase appears in no other Python or HTML file under `src/` or `tests/`, as that test already asserted.
+- **The new prose gate is wired into every place a gate lives, and `tools/harness_parity.py` deliberately is not.**
+  `docs/CHANGE_POLICY.md`'s gate list, README's *Development* block, the CI docs job and two new local hooks in
+  `.pre-commit-config.yaml` all run `tools/check_docstrings.py` and its `--self-test`. `tools/harness_parity.py` is documented in
+  both places as a **release-time comparison rather than a commit hook**, because it needs exactly one harness log from each
+  implementation and exits **2** — never a pass in this project — when fewer than two usable logs are given: a commit supplies
+  neither, and making a commit produce them would put two full harness runs in front of every commit to answer a question that
+  only has an answer once both harnesses have been driven against the same build. `ci.yml` carries that reasoning as a comment
+  instead of a job, since a job that cannot supply its own inputs can only assert that it refused to run.
+- **`tools/fast_lane.py` gained the prose gate in its commit-only list and *not* in its doc pair.** The lane stays scoped ruff,
+  `tools/check_version.py`, `tools/check_docs.py` and a targeted `pytest -k`; `tools/check_docstrings.py` joins `mypy src` and
+  coverage measurement as what a commit owes. That is an explicit decision, recorded both ways: the alternative — adding it to
+  `DOC_TOOLS` — would have made every edit pay for a read of every module under `src/`, including an edit confined to one
+  template, and it would have required editing `tests/test_fast_lane.py`, which pins that pair in three separate assertions.
+  `tests/test_docstrings.py` now asserts the decision as data: present in `COMMIT_ONLY_STEPS`, absent from `DOC_TOOLS`, and
+  absent from anything `build_steps` can emit.
+
+### Testing
+
+- **Four new tests.** `tests/test_views.py` gained the order assertion above
+  (`test_a_refused_paste_is_named_on_the_sign_page_above_the_box_it_belongs_to`), plus
+  `test_a_ca_privileged_paste_is_refused_on_the_sign_page_at_403` (the privilege claim keeps its 403 *and* its form) and
+  `test_an_inline_refusal_is_still_the_sign_page_with_its_nav_and_headers` (a refusal that re-renders the sign page must still
+  carry the nav and the four security headers — a bespoke error body would pass the first two tests and fail this one).
+  `tests/test_no_key_leakage.py` gained `test_a_refused_paste_that_is_echoed_back_carries_no_key_body`: the echoed paste keeps
+  its armour lines, carries none of the key's base64 in PEM or decoded form, and names the filtered count.
+- **Collection moved 782 → 786 tests** with zero skips (`test_views.py` 84 → 87, `test_no_key_leakage.py` 17 → 18), and then
+  **786 → 790** when the frozen record landed: `docs/history` and `docs/measurement-history.md` were added to the sdist's
+  `include` list and to `REQUIRED_INCLUDES` in the same commit, and `tests/test_packaging.py` parametrizes two assertions over
+  that list (`test_every_include_entry_exists_on_disk`, `test_no_include_entry_can_reach_anything_forbidden`), so each new entry
+  contributes exactly one test to each. **The +4 is intended growth, not drift** — it is the mechanism doing its job: an include
+  entry earns its own on-disk existence check and its own "cannot reach a forbidden path" check. The list is also asserted as a
+  set in both directions, so the growth is what makes a one-sided edit (config changed, test list not) fail rather than pass.
+  `tests/test_packaging.py` went 25 → 29 on that change and is the only file affected; every other module's collected count is
+  unchanged from the 786 run.
+  Coverage TOTAL moved 3008 → **3025 statements / 103 missed = 96.60%** (the 0.7.0 release was cut against 3008 / 97 = 96.78%).
+  The +17 statements and the +6 missed lines are **all in `app.py` (834/49 → 851/55)** — every other module's row is unchanged,
+  MEASURED by re-running the frozen 0.7.0 tree under this venv (`/tmp/extract-070/mypki-0.7.0`: TOTAL 3008 / 97) and diffing the
+  two `Missing` lists line by line rather than inferring them. The six new uncovered lines are: `on_csr_validation`'s body (its
+  `log.info` and its `return _render_error`) and `on_ca_privilege`'s body, both now **bypassed** for a sign-page paste because
+  `csr_sign_submit` catches those two errors itself — the handlers stay registered and still answer them on any route without a form
+  of its own; and `_paste_refused`'s `else:` arm, the `KeyPolicyError` branch. **That last gap is deliberate and it is not new**:
+  0.7.0's `Missing` column already listed `on_key_policy`'s body. No test pastes a weak key because generating a sub-2048-bit
+  RSA key costs real entropy in a suite that is otherwise fixture-driven; both harnesses cover the same route live. The gap is
+  recorded here rather than left for the next reader to find it in the `Missing` column.
+- **The harness total moved against 0.7.0's ledger, MEASURED rather than predicted** (an earlier draft of this bullet named a
+  number and was wrong by one: §1 gained an assertion too). Both harnesses exited 0 on 2026-11-03, each against its own freshly
+  minted data dir (`/tmp/pkismoke-071sh` for the `.sh`, `/tmp/pkismoke-071ps1` for the `.ps1` under `/tmp/pwsh/pwsh` 7.6.9), and
+  their ledgers agree section by section; the totals, per-section counts and heading positions live in
+  [`reports/harness-ledger.md`](reports/harness-ledger.md), which is what `tools/check_docs.py` sends a reader to rather than a
+  copy of it here — no count from either harness is quoted in this file. What the new assertions check: the
+  `.form-errors.refused` block being present, its refusal paragraph preceding *Paste a CSR (PEM)* in document order (the same
+  ORDER fact the `.sh` checks by line and the `.ps1` by string offset), the rejected paste being echoed back into its own
+  textarea, and no confirmation panel having been rendered (`This is what the request says` appearing zero times — the half that
+  proves nothing was staged); plus the sign page's *"CSR requesting CA powers will be refused."* sentence, where a
+  renamed-heading assertion replaced a needle rather than adding one. A **control run** of the extracted shipped zip reproduced
+  0.7.0's own ledger the same day, so the movement is a measured delta between two trees and not an arithmetic expectation. The
+  dated records of those runs, and of the pair this release was actually cut against on 2026-11-05, are in
+  [docs/measurement-history.md](docs/measurement-history.md) under *0.7.1 release evidence*.
+- **`tests/test_docstrings.py` (new) pins the prose gate from the test side.** It asserts zero findings over the real `src/`, a
+  passing `--self-test`, that a line breaking all three rules is reported three times rather than collapsed, that the allow
+  marker excuses its own line and only that line, that exit **1** and exit **0** stay distinguishable end-to-end through `main`,
+  that the checker imports nothing from `mypki` and stays within the standard library (the same shape as
+  `tests/test_version.py`'s stdlib-only check), and that the reading half of the checker writes nothing — verified both by
+  grepping that half and by running the gate against this tree and comparing every file byte for byte. Its needle assertions
+  hold fourteen phrases that tests, documents or both harness scripts quote out of `src/` docstrings: each has to still exist,
+  in its own module, and still be *docstring* text rather than a literal that happens to repeat it. That half is what stops a
+  gate from cleaning a tree by deleting the sentence a test quotes.
+- **Coverage denominators are reconciled rather than guessed.** Read straight from `coverage.parser` with no exclusion pattern
+  at all, `src/` holds more statements than the report's TOTAL column; the difference is entirely `# pragma: no cover`, and the
+  count of those markers in `src/` is small enough to list by hand. One occurrence is prose explaining why the marker is honest
+  in `__main__.py` rather than a dodge — that file only runs when it *is* the process, and coverage traces the parent instead.
+  The numbers for this build are read from the gate output rather than copied into this file.
+
+### Changed (wording, resolved in this pass)
+
+- **`app.py`'s module-docstring heading was made true without renaming it.** It read *Two error surfaces instead of one*,
+  which the second bullet contradicted: the docstring now lists three (typed field → 200 on the same form; refused paste →
+  400/403 on the sign page; a refusal with no form to answer → `error.html`). The phrase itself is **kept** — five test
+  docstrings (`tests/test_consent.py`'s *two error surfaces* sentence, three of `tests/test_csr_generate.py`'s docstrings, and
+  `tests/test_views.py`'s refusal-order test), page-map §3 and SMOKE_TESTING.md's
+  §16 row quote it, and a heading reworded underneath tests that name it is a rename those tests would never report. The heading
+  now reads *"Two error surfaces instead of one" (0.2.0) — the name is kept, the count is not: there are three now*, so the
+  quotation stays valid and the sentence stops lying. `templates/csr_sign.html`'s comment says the same thing in the template's
+  own voice, naming where the phrase is quoted from; page-map §3's heading gained the matching clause.
+
+- **That quoting is now gone: the rule is cited by name** (`docs/CHANGE_POLICY.md`, *Wording* class). `app.py` defines
+  `ERROR_SURFACE_RULE`, whose value is that module-docstring heading, and every living citation of the rule — three template
+  comments, five test docstrings across `test_consent.py`, `test_csr_generate.py` and `test_views.py`, page-map §3's own
+  heading (now *Error surfaces*), and SMOKE_TESTING.md's §16 row — names the constant instead of retyping the sentence.
+  Rewording the docstring is then a one-file edit rather than the multi-file sweep the bullet above exists to reconcile.
+  The phrase itself now survives in three kinds of place, and only these: `app.py`'s heading plus the constant's own value
+  (the two spellings that must agree), `docs/history/0.2.0.md` where it records what 0.2.0 said and is not editable, and
+  this file's changelog entries — including the one above — which are records of past passes rather than live citations.
+  `tests/test_packaging.py` guards both ends mechanically: the constant is assigned exactly once in `app.py`, its value is
+  quoted there exactly twice (heading and assignment), and no other Python file under `src/` or `tests/` contains the phrase
+  at all. A silent rename, or a quotation creeping back into living code, fails a gate instead of drifting. Neither harness
+  script ever quoted the phrase, so both scripts are byte-identical to their recorded hashes and no harness assertion moved.
+- **The cost of that pass is now a command, not a discipline** (`docs/CHANGE_POLICY.md`, *Wording* class again: no behaviour, no
+  status code and no user-visible string moved). `tools/fast_lane.py` runs the cheap subset named in this file's own gate list —
+  scoped `ruff check`, scoped `ruff format --check`, `tools/check_version.py`, `tools/check_docs.py` and a targeted
+  `pytest -k … --no-cov` — and **omits `mypy src`, coverage measurement, `scripts/smoke_test.sh` and `scripts/smoke_test.ps1`**,
+  printing those four as what a commit still owes. The omission is pinned by `tests/test_fast_lane.py`, which asserts over
+  `LINT_STEPS`, `DOC_TOOLS`, `COMMIT_ONLY_STEPS` and every step `build_steps` can produce that no type gate, no `-cov` flag and
+  no harness run enters the lane; it also pins the two exit codes a wrapper would otherwise flatten — `main([])` returning **2**
+  rather than calling an argument-free invocation a pass, and pytest's exit **5** reported as *NO TESTS RAN* rather than as either
+  a failure or a success. The tests this lane drops are the ones named in `COMMIT_ONLY_STEPS`: `mypy src`, the full-suite
+  `pytest --cov` run, and both harness scripts. Two further omissions were dropped from the suite itself rather than from the lane:
+  `tests/test_ocsp.py`'s `test_the_page_map_carries_sections_14_and_15_with_the_promised_words` and
+  `test_the_page_map_no_longer_claims_that_nothing_is_published`, both page-map transcription tests whose needles are asserted in
+  `tools/check_docs.py`'s rules and the docs gate itself, so a spec-quote test re-checking spec text was asserting one fact in two
+  places. `tools/harness_parity.py` is the additive comparison half: it reads two harness logs with `tools/harness_ledger.py`'s
+  parsing patterns, prints one row per section with each side's PASS count, and exits **1** on a missing section, a renamed
+  heading or a count that differs by one, printing `parity: NO` for the pair it just compared. Neither tool's output is copied
+  into this file: **NO counts** from either harness are quoted here, because per-section totals are measurements of one run and
+  `reports/harness-ledger.md` is what carries them.
+
+### Release evidence (measured once, at the cut)
+
+Written at release time against this release's own runs, which is when `docs/CHANGE_POLICY.md` says measurements get written
+down. Every number below names the gate output it came from; nothing was re-derived from an earlier release's figures, and no
+harness count is among them — the totals, per-section counts and heading positions of both harness logs live in
+[`reports/harness-ledger.md`](reports/harness-ledger.md), generated by `tools/harness_ledger.py` from those logs, and the dated
+record of the runs themselves is [docs/measurement-history.md](docs/measurement-history.md) under *0.7.1 release evidence*.
+
+- **The gates this cut was made against** (2026-11-05, ruff 0.17.2 / mypy 2.4.0 / pytest 9.1.1 on CPython 3.12.13): scoped
+  `ruff check src tests tools` and both `ruff format --check` forms clean — the bare `.` form and the scoped form report their
+  own file counts in the gate output, and CI runs the scoped pair; `mypy src` clean over its declared source files;
+  `tools/check_version.py` exit 0 with the chain consistent at 0.7.1; `tools/check_docs.py`, `tools/check_docstrings.py` and both
+  `--self-test`s exit 0.
+- **The suite**: `.venv/bin/python -m pytest --cov=mypki --cov-report=term-missing --cov-fail-under=85` exits 0 with zero skips,
+  and the coverage table it prints reads TOTAL 3025 statements / 103 missed = 96.60%, `src/mypki/app.py` at 851 / 55 — matching
+  the delta the Testing bullets above record, and re-checked against `/tmp/g071/cd_pytest.log` and `/tmp/g071/ef_pytest.log`, which
+  read the same rows earlier in this cycle. Collected is **819**, measured twice rather than inferred once: from the run's own
+  progress block (eleven full rows plus a final partial one) and from `--collect-only -q` across 23 test modules, which agree.
+  Against the previous pass's surviving collection diag the whole difference is two modules — `tests/test_fast_lane.py` gaining
+  six tests for the interpreter choice, and `tests/test_docstrings.py` joining the suite.
+- **Both harnesses were re-run on this build** (2026-11-05), each against `build/` in its own scratch tree with a freshly minted
+  data dir, plain `init-ca` at the default CN, `HOME` plus the four `XDG_*` redirected, and an explicit base: the `.sh` on
+  `http://127.0.0.1:8641` (`/tmp/pkismoke-0711sh`) and the `.ps1` on `:8643` under `/tmp/pwsh/pwsh` 7.6.9
+  (`/tmp/pkismoke-0711ps1`). Both exit 0, both report expected version **0.7.1** from the running app rather than a hard-coded
+  needle, and their ledgers agree heading-for-heading; `tools/harness_parity.py` printed one `ok` row per section and exited 0.
+  Neither harness script was edited for this release: both are byte-identical to the hashes taken at the start of the pass
+  (`/tmp/g072/h_baseline.log`), which is what a PATCH owes — an error surface moved, not an assertion.
+- **Packaging**: no sdist and no wheel — `hatchling` and `python -m build` are absent from `.venv`, checked rather than assumed.
+  This release ships as a zip of the tested source tree, built from an explicit path list piped through `tar cf - -T <list>` into
+  a staging directory and then `zip -q -r -X`, never from a directory walk. The archive's file entries are exactly the paths the
+  list names — compared with `diff` rather than counted twice — and a scan of that entry list for key material (`.pem`, `.key`,
+  `.crt`) and for this checkout's runtime and generated state (`logs/`, `src/logs/`, `nohup.out`, `.coverage`, `.venv`,
+  `__pycache__`, `reports/`) reports nothing. Per-file sha256 aggregates are identical across the three states the bytes passed
+  through — the build tree as the list reads it, the staged tree inside the archive, and a fresh extraction — which is what makes
+  the zip a copy of what was measured rather than a rebuild of it.
+- **Two exclusions that disagree on purpose.** `pyproject.toml`'s sdist `exclude` names `scripts`, and this archive carries both
+  harness scripts: the sdist is what an install reads, the zip is a copy of the tree that was actually driven against a server,
+  and it carried them in 0.7.0 as well. `reports/` stays out for the opposite reason — it is generated from a harness log on this
+  machine, and this file links to it rather than copying it, so shipping it would freeze one run's measurements into an artifact.
+- **What moved in the tree between the last behaviour edit and this cut**: `src/mypki/__init__.py` alone (the version line),
+  measured by mtime across `src/`. That is why the suite was not re-run after the documentation pass — no file under `src/` or
+  `tests/` changed, so there was nothing for a second coverage run to measure differently.
+
+## [0.7.0] - 2026-11-02
+
+A **MINOR** release by this file's own definition: revocation became an artifact instead of only a row, and everything new
+is additive — this file's MINOR test ("a new page, a new `MYPKI_*` knob, a new CLI flag, a new profile field") is met by its
+first term twice (`/crl`, `/crl.pem`) and its second term exactly once (`MYPKI_CRL_BASE_URL`); there is no new CLI flag, and the
+only certificate-profile change is two extensions *added* to newly-issued leaves. What an operator has to re-learn is one sentence long: **this host now publishes a CRL and answers OCSP, and only clients that
+consult them act on it.** Nothing else moved. No existing route changed address or form fields; no certificate profile in
+`docs/page-map.md` §7 was re-labelled (two extensions were *added* to newly-issued leaves, which is what the "new profile
+field" term covers); no row of `issued.db` changed shape and no migration runs; **an existing data directory opens with no
+manual step** — startup simply writes `<data>/crl/mypki.crl.pem`, and a host that has never revoked anything publishes a
+valid zero-entry artifact rather than an error. The root CA on disk is untouched: `ca.py` already sets `crl_sign=True`
+(MEASURED), so signing CRLs and OCSP responses needs no re-issue and no second key. A `<config>/mypki.env` written by 0.5.0,
+0.5.1, 0.5.2 or 0.6.0 reads back unchanged — the one new knob is absent from it and takes its documented default. And
+**certificates issued before 0.7.0 carry no `CRLDistributionPoints` and no `AuthorityInfoAccess`**: there is no migration and
+no re-issue (that was an explicit product decision, not an omission), which is also why the CRL deliberately carries no
+`IssuingDistributionPoint` — measured against openssl 3.5.6, an IDP-scoped CRL makes `openssl verify -crl_check` answer
+`error 44 at 0 depth lookup: different CRL scope` for every such certificate, i.e. this CA's own history. What did **not**
+change is the client side of revocation at all: no fetching, no enforcement, no delete, and a revoked certificate stays
+trusted by clients that never consult an artifact until it expires. The gate this release was cut against, and the two harness runs that
+re-measured it on the released tree (2026-11-02, each against its own freshly minted tree and data dir), are recorded in full — totals,
+coverage, per-section ledger and log layout — in [docs/measurement-history.md](docs/measurement-history.md) under *0.7.0 release evidence*.
+Against 0.6.0's measured total the release is **+37**: +36 in §11, all of it the new STEP F block (CRL + OCSP, asserted after the
+revocations that create its subject), and +1 in §12 (`/about`'s rewritten revocation caveat now asserts two sentences where the dead one
+asserted one). `openssl` was still never invoked by either harness. The 0.6.0 run it is compared against is kept as history in
+[docs/history/0.6.0.md](docs/history/0.6.0.md) rather than overwritten here.
+
+### Added
+
+- **`src/mypki/crl.py`, `<data>/crl/mypki.crl.pem`, and three routes.** `GET /crl` renders the human page (facts card read
+  back **from the file on disk**, the copyable PEM block, the advertised URL, the Rebuild control, and four measured caveats);
+  `GET /crl.pem` serves the artifact as `application/pkix-crl` with `no-store`, `nosniff` and a literal
+  `Content-Disposition: attachment; filename="mypki.crl.pem"`; `POST /crl/rebuild` is CSRF-checked as its first statement and
+  re-signs the same data — it revokes nothing, and the page says so beside the button. A keyless host answers the existing
+  `CaNotFoundError` **503** rather than a new error class.
+- **The entry rule (answer 8), stated where it can be misread.** Entries are rows with `revoked_at_utc IS NOT NULL` **and**
+  `not_after_utc > now`: revocations stamped in 0.2.0–0.6.0 are included, and a revoked certificate whose own validity has
+  lapsed is **dropped**. "Removed from the CRL" reads as "un-revoked" to a human, so `/crl`, README gotcha 3 and page-map §14
+  each say plainly that the row stays in `issued.db` forever and there is no un-revoke. `CRLNumber` comes from
+  `store.count_revoked()` rather than `len(entries)` because entries can shrink while RFC 5280 §5.2.1 wants the number to grow.
+- **`IssuedStore.revoked_records()`** (read-only, ordered by stamp then serial, **no 500-row cap** — `list_records` caps
+  because it renders a page, and a capped CRL would leave the 501st revoked certificate trusted). The introspection guard in
+  `tests/test_store.py` ("exactly one UPDATE, no delete") passes untouched: this adds a read, not a mutation.
+- **`MYPKI_CRL_BASE_URL`** (`http://mypki.my.lab` by default), the release's only new knob. It is a *base*, not a full URL —
+  `app.py` spells `/crl.pem` and `/ocsp`, so a certificate can never advertise a path this app does not serve. Plain `str`, so
+  clearing the box on `/settings` is refused naming the knob rather than silently reverting; a `field_validator(mode="before")`
+  refuses anything not starting with `http://` or `https://` **at startup**, because the value is copied into every certificate
+  issued afterwards, and trailing slashes are stripped rather than rejected. Live (not in `STARTUP_ONLY_KNOBS`) but not
+  retroactive: it reaches only certificates issued after the change.
+- **`CRLDistributionPoints` and `AuthorityInfoAccess` on newly-issued leaves** (`…/crl.pem`, `…/ocsp`), both non-critical, both
+  added by `signing.leaf_extensions()` from that one base. "Extensions are never copied from the CSR" still holds and is now
+  load-bearing rather than incidental: a request carrying its own distribution point is still classified ignorable, still
+  dropped, still named — asserted against a request asking for `http://crl.internal/crl.der`, which produces
+  `urls == ["http://mypki.my.lab/crl.pem"]` and nothing else.
+- **`src/mypki/ocsp_responder.py` + `POST /ocsp`.** Every status is built with `add_response_by_hash`, echoing both CertID
+  hashes and the request's own hash-algorithm instance verbatim (mypki stores no certificate PEM, and `issuer_key_hash` cannot
+  be recomputed for a SHA-256 request — measured). GOOD / REVOKED / UNKNOWN come from this host's store; a revoked-and-expired
+  serial answers **UNKNOWN**, the one status that does not contradict the CRL next door. `ReasonFlags.unspecified` always, because
+  the stored reason is operator prose and inventing a code from prose would be a claim this CA cannot support. `thisUpdate` +
+  **4 h**; the request's nonce echoed when present; responder = the root certificate itself (`responder_id(NAME, ca.cert)`,
+  `certificates([ca.cert])`), signed SHA-256. Protocol refusals are bodies at HTTP 200: `30 03 0a 01 01` (MALFORMED_REQUEST) and
+  `30 03 0a 01 02` (INTERNAL_ERROR), each exactly five bytes. Two size limits, both measured end-to-end: the handler answers
+  MALFORMED_REQUEST above **8 KiB** without signing anything, while a body over `max_csr_chars + 8192` (**40,192**) is answered by
+  mypki's HTML **413** from the unmodified `SizeGuardMiddleware`, declared-length and chunked alike. No cache.
+- **Two fixed lifetimes as module constants, not knobs**: `crl.CRL_LIFETIME` (24 h) and `ocsp_responder.OCSP_LIFETIME` (4 h), plus
+  `OCSP_MAX_REQUEST_BYTES` (8192). Page-map §11 states why none of the three gets a `MYPKI_*` row, a preset or an empty-value rule.
+
+### Changed
+
+- **The sentences that became false were rewritten in the same commit as the behaviour**, not after it: `/issued`'s confirmation
+  and footer, `/about`'s "what this CA does not do", `/ca`'s "What installation does not do", `/inspect`'s four self-describing
+  sentences, `/csr/sign`'s validity hint and issued note, `signing.leaf_extensions()`'s docstring ("no CRLDistributionPoints, no
+  AuthorityInfoAccess appear here at all" — true through 0.6.0, false from 0.7.0), `config.py`'s ceiling comment and
+  `validity_default_days` description (both rendered verbatim on `/settings`), `store.py`'s reason-length comment, `inspect.py`,
+  `csr.py`, four `app.py` docstrings, README's intro and gotcha 2 (now four numbered caveats), and page-map §0/§3/§5/§7/§8/§11/§12/§13.
+  `tests/test_signing.py`'s exact ordered extension list grew from six entries to eight and its name/prose were rewritten from what
+  the function actually returns rather than from the old sentence. Released CHANGELOG history is left as written: a 0.6.0 section
+  saying "no CRL" is a record of what was true then.
+- **`MYPKI_VALIDITY_MAX_DAYS` stays at 1461**, with its prose rewritten. 0.2.0's reasoning ("the honest fix is the CRL release")
+  has now happened, and the ceiling's remaining justification is the measured one: a CRL entry or an OCSP answer counts only for a
+  client that consults one, so validity remains the bound that needs no cooperation from anyone else.
+- **`MYPKI_PUBLIC_BASE_URL`'s description says what does feed a certificate**: `crl_base_url`, because the two facts have different
+  lifetimes — one describes how you reach this host today, the other is frozen into certificates that outlive the change.
+
+### Testing
+
+- **`tests/test_crl.py` (41 collected from 38 test functions, three parametrized)** and **`tests/test_ocsp.py` (31 tests)**, both openssl-free (the CI job's "NO OpenSSL binary is
+  required anywhere" is a contract, not a preference). What they assert as data: `CRLNumber` non-decreasing across a rebuild that
+  *removed* an entry; the >500-row case; 159-bit serial round-trips (MEASURED: 101 of 200 real mypki serials carry the top bit);
+  no `IssuingDistributionPoint` and no `DeltaCRLIndicator`; atomic write leaving no temp file and a world-readable artifact; page and
+  artifact byte-identical because both read the file; the four caveats present on `/crl` as written words; a rebuild refused without a
+  token costing **no** signature (asserted by comparing the file byte-for-byte); the OCSP decision table including the
+  revoked-and-expired/never-revoked-and-expired pair; the hash echo under SHA-1 **and** SHA-256; the 4 h interval on the artifact; a
+  hand-verified signature (`public_key().verify(parsed.signature, parsed.tbs_response_bytes, PKCS1v15(), SHA256())`) plus the
+  `sha256WithRSAEncryption` OID; nonce echo and no-extension-when-absent; determinism at a pinned instant; both handler caps and the
+  middleware 413; keyless and no-CA hosts answering DER and creating no `<data>/crl/`; `GET /ocsp` → 405.
+- **`tests/test_no_key_leakage.py`** gained `/crl` and `/crl.pem` to its page sweep (the first non-HTML entries it has ever searched,
+  matched via `.decode("latin-1")`) plus three new tests: the CRL is armour-free with `AuthorityKeyIdentifier ==
+  from_issuer_public_key(...)` and two GETs byte-identical; an OCSP body carries no bytes of the CA key in DER, PEM or base64 form and
+  verifies against the public key; and both refusals carry **no** bytes of any kind.
+- **`tests/test_packaging.py`**: `/crl` joins the every-page GET sweep (the nav stays seven links, so nothing else ever fetched it) and
+  `src/mypki/templates/crl.html` joins the asset list. `/ocsp` deliberately does **not** join the GET sweep — it answers 405 JSON, and a
+  sweep that asserts 200 + `<!DOCTYPE html>` would be asserting the wrong contract. No `.crl.pem` fixture is committed under `src/` or
+  `tests/`, so the key-material walk stays green; the generated artifact lives outside the tree, like `issued.db`.
+- **Collection moved 704 → 782 tests** (`test_crl.py` 41 + `test_ocsp.py` 31 new; coverage TOTAL 2730 → 3008 statements, 97
+  missed, 96.78%), with zero skips.
+- **The shipped artifact was tested as shipped.** `mypki-0.7.0.zip` (749,618 B, sha256 `74a9523916870e787e0cdf9456a930cab93c0162c97a8b398b8d10cec7d489cd`,
+  79 entries = 68 files + 11 dir entries under `mypki-0.7.0/`) was built from an explicit 68-path list — the 0.6.0 list plus exactly five additions
+  (`src/mypki/crl.py`, `src/mypki/ocsp_responder.py`, `src/mypki/templates/crl.html`, `tests/test_crl.py`, `tests/test_ocsp.py`) and zero deletions —
+  staged with `tar cf -T` and zipped with `zip -q -r -X`; the manifest leak scan (`pyc|__pycache__|.env$|logs/|.pem$|.key$|.crt$|venv|coverage|.git/|cache|nohup`)
+  returns **RC=1** (clean), and the per-file sha256 aggregate matches **three ways**: build tree == staging tree == extracted tree
+  (`16435edb3a82741355a93ce6c5c7bb09c87232b89fcb07fab3449a4a65e5c260` over 68 files). Unzipped to `/tmp/extract-070`, with `PYTHONPATH` pinned to the
+  extracted `src` (this venv's editable install of `build/` would otherwise answer the import), the gate re-ran green inside the archive: **782 tests /
+  0 skips, TOTAL 3008 / 97 missed = 96.78%**, `mypy` clean over 19 source files, `ruff check` clean, `tools/check_version.py` exit 0 naming the extracted
+  paths. **Both harnesses were then run from the extracted tree against their own freshly minted data dirs** (2026-11-03, `/tmp/s11b/run_harness_x070.sh`
+  retargeted at `<extract>`): `.sh` on `http://127.0.0.1:8621`, `.ps1` on `:8623` under `/tmp/pwsh/pwsh` 7.6.9, plain `init-ca` (CN=mypki Root CA,
+  RSA 3072), `HOME` + the four `XDG_*` redirected, `MYPKI_CONFIG_DIR`/`APPDATA` unset, no `--base` / `-Base`, server cwd `<extract>/src`. Both exited 0, and
+  their full ledgers — totals, per-section counts and heading positions — are in
+  [docs/measurement-history.md](docs/measurement-history.md) under *Both harnesses run from the extracted shipped zip*. The extracted ledger is identical
+  to the `build/` ledger recorded there, which is what makes the zip a copy of the tested tree rather than a rebuild of it.
+- **One file in the frozen archive is not the file in the build tree: `CHANGELOG.md` itself.** The copy inside
+  `mypki-0.7.0.zip` (1,146 lines / 117,061 B) lacks the `## [0.6.0] - 2026-11-01` heading this QA pass
+  restored above — the archive was cut before it was re-attached — so in that copy the 0.6.0 narrative and
+  its `### Added` / `### Changed` / `### Fixed (harness defects found by running §16 against a correct app)`
+  sub-headings sit under no release heading. The zip was **not** rebuilt to carry this line. Re-checked 2026-11-03
+  against an extracted copy: **66 of the 68 shipped paths hash equal** between `/home/user/mypki/build` and
+  `mypki-0.7.0.zip`, and the two that differ are this file and `SMOKE_TESTING.md` — both edited after the
+  archive was frozen, each difference recorded in its own file rather than hidden by re-zipping.
+
+### Known gaps in 0.7.0 (deliberate, not pending work)
+
+Still absent after this release, all of it stated on `/crl` and in README gotcha 2: no CRL or OCSP **fetching** by mypki itself
+(`openssl verify` does not fetch a baked CDP either — measured, `error 3 … unable to get certificate CRL`, with the CRL served live on
+a port and no GET in the server log); no delta CRLs and no IDP scoping; no un-revoke and no delete; no delegated OCSP responder, so the
+responder is a root carrying no `id-kp-OCSPSigning` (accepted by openssl 3.5, **unmeasured** against a browser or Go client); no CRL
+coverage of certificates issued before 0.7.0; and no way to make a client that never consults an artifact honour a revocation.
+
+## Release index
+
+Everything below 0.7.0 is frozen history and lives one file per release under `docs/history/` - moved out of this
+file so a change to the current build never has to be reconciled against a previous release's measurements. Frozen
+files are append-only and are not policed by `tools/check_docs.py`.
+
+- **[0.6.0]** - 2026-11-01 - `docs/history/0.6.0.md`
+- **[0.5.2]** - 2026-10-31 - `docs/history/0.5.2.md`
+- **[0.5.1]** - 2026-10-31 - `docs/history/0.5.1.md`
+- **[0.5.0]** - 2026-10-30 - `docs/history/0.5.0.md`
+- **[0.4.0]** - 2026-10-29 - `docs/history/0.4.0.md`
+- **[0.3.0]** - 2026-10-29 - `docs/history/0.3.0.md`
+- **[0.2.0]** - 2026-10-28 - `docs/history/0.2.0.md`
+- **[0.1.0]** - 2026-10-26 - `docs/history/0.1.0.md`
+
+[Unreleased]: https://github.com/madmickstar/mypki/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/madmickstar/mypki/releases/tag/v0.7.1
+[0.7.0]: https://github.com/madmickstar/mypki/releases/tag/v0.7.0
+[0.6.0]: https://github.com/madmickstar/mypki/releases/tag/v0.6.0
+[0.5.2]: https://github.com/madmickstar/mypki/releases/tag/v0.5.2
+[0.5.1]: https://github.com/madmickstar/mypki/releases/tag/v0.5.1
+[0.5.0]: https://github.com/madmickstar/mypki/releases/tag/v0.5.0
+[0.4.0]: https://github.com/madmickstar/mypki/releases/tag/v0.4.0
+[0.3.0]: https://github.com/madmickstar/mypki/releases/tag/v0.3.0
+[0.2.0]: https://github.com/madmickstar/mypki/releases/tag/v0.2.0
+[0.1.0]: https://github.com/madmickstar/mypki/releases/tag/v0.1.0

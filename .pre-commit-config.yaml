@@ -1,0 +1,106 @@
+# Pre-commit: the same rules CI enforces, run locally before a commit rather than after a push.
+#
+# CI does NOT run pre-commit — it runs `ruff check` and `ruff format --check` directly (see .github/workflows/ci.yml), so
+# contributors who never install pre-commit are gated by identical rules. This file exists so the failures arrive on the
+# contributor's machine instead of in a red X on a pull request.
+#
+# Order matters and is not cosmetic: `ruff --fix` rewrites code, and `ruff-format` then normalises what ruff changed. Run
+# them the other way round and a format-clean file comes back from the fixer unformatted, so every commit needs a second
+# pass — which is how people start committing with `--no-verify`.
+#
+# `language: python` + explicit `additional_dependencies` pins the linter version pre-commit installs in its own isolated
+# environment. Without it, pre-commit resolves its own ruff (silently newer than the venv's) and reports findings that the
+# project's pinned `ruff>=0.4` never produces locally — a gate nobody can reproduce is a gate people route around.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.2
+    hooks:
+      # `--fix` only for rules with unambiguous fixes; ruff's own default set of fixable rules is what the project's
+      # `select = [E,F,I,UP,B,C4,SIM,RUF]` in pyproject.toml is evaluated against, so no rule list is duplicated here.
+      - id: ruff
+        args: [--fix]
+        additional_dependencies: [ruff==0.17.2]
+      - id: ruff-format
+        additional_dependencies: [ruff==0.17.2]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Trailing whitespace in a Python file is invisible until it makes a diff noisy; in a markdown table it makes the table
+      # render wrong. Cheap to enforce, and never a judgement call.
+      - id: trailing-whitespace
+      # A missing final newline makes every tool that appends a line produce a spurious diff on the first change, and git
+      # renders it as "\ No newline at end of file" in every patch a reviewer then has to read past.
+      - id: end-of-file-fixer
+      # Two YAML files carry this project's whole release contract (this one and .github/workflows/ci.yml), and a broken
+      # workflow file fails at trigger time rather than at commit time — which is the worst moment to discover it.
+      - id: check-yaml
+      # A committed 5 MB PEM is the single most likely way this repository could leak a key, and no other hook here catches
+      # it: content filters look for text patterns, not for size. 200 kB is well above every source file in the tree and
+      # well below anything a certificate or database accident produces.
+      - id: check-added-large-files
+        args: [--maxkb=200]
+      - id: destroyed-symlinks
+
+  - repo: local
+    hooks:
+      # The version chain runs locally too, because the drift it catches (a bumped __version__ with no CHANGELOG section) is
+      # cheapest to fix in the commit that caused it and most expensive to discover on a release tag. `entry` points at the
+      # script rather than an installed console entry point so it works in a checkout where mypki is not installed — the
+      # same property CI's version job depends on.
+      - id: check-version-chain
+        name: version chain (module -> manifest -> CHANGELOG)
+        entry: python3 tools/check_version.py
+        language: system
+        files: ^(src/mypki/__init__\.py|pyproject\.toml|CHANGELOG\.md)$
+        pass_filenames: false
+
+      # The docs gate is where a small code edit used to turn into a documentation sweep: prose that copied a harness total
+      # or cited `app.py:609` went stale on the first unrelated edit above it, and nothing said so until a reader tripped over
+      # it. Running it here means the sentence fails while the author still has the change in front of them.
+      # `files:` scopes it to the documents it polices, so a commit that touches only Python does not re-read 900 lines of
+      # markdown; `require_serial` is unnecessary because the gate reads whole files rather than mutating anything.
+      - id: check-docs-hygiene
+        name: living docs free of copied measurements and line citations
+        entry: python3 tools/check_docs.py
+        language: system
+        files: ^(README\.md|SMOKE_TESTING\.md|CHANGELOG\.md|docs/.*\.md)$
+        exclude: ^docs/(history/.*\.md|measurement-history\.md)$
+        pass_filenames: false
+
+      # The gate's own mutation check, cheap enough to run every commit. If a rule is edited into one that matches nothing,
+      # this hook reports it immediately instead of leaving a permanently green gate behind.
+      - id: check-docs-self-test
+        name: docs rules can actually fire (mutation self-test)
+        entry: python3 tools/check_docs.py --self-test
+        language: system
+        files: ^(tools/check_docs\.py|README\.md|SMOKE_TESTING\.md|CHANGELOG\.md|docs/.*\.md)$
+        pass_filenames: false
+
+      # The src/ half of the same idea: docstrings and full-line comments under src/ may not name a release, record how one probe
+      # run went, or point at a planning document's numbering. Those are release-time facts, docs/history/ is where they belong, and
+      # a docstring that carries them drags every later edit into renegotiating a sentence the code no longer means. `files:` scopes
+      # the hook to what it reads, so a commit touching only markdown does not re-scan the package.
+      - id: check-docstrings-hygiene
+        name: src/ docstrings and comments free of release-time prose
+        entry: python3 tools/check_docstrings.py
+        language: system
+        files: ^src/mypki/.*\.py$
+        pass_filenames: false
+
+      # And its mutation check, for the same reason the docs one is here: a rule edited into one that matches nothing is a gate that
+      # passes forever, and the cheapest moment to discover that is the commit that did it.
+      - id: check-docstrings-self-test
+        name: src/ prose rules can actually fire (mutation self-test)
+        entry: python3 tools/check_docstrings.py --self-test
+        language: system
+        files: ^(tools/check_docstrings\.py|src/mypki/.*\.py)$
+        pass_filenames: false
+
+      # `tools/harness_parity.py` is deliberately absent from this file. It compares two smoke-harness logs — heading for heading,
+      # per-section PASS count for per-section PASS count — so it needs exactly one log from each harness implementation, and given
+      # fewer than two usable logs it exits 2, which this project reads as "could not check" rather than as a pass. A commit supplies
+      # neither log, and making a commit produce them would put two full harness runs in front of every commit for a question that only
+      # has an answer once both harnesses have been driven against the same build. It is a release-time comparison run alongside
+      # tools/harness_ledger.py, not a hook: see docs/CHANGE_POLICY.md.

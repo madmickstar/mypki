@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}CA certificate{% endblock %}
+{% block content %}
+<h1>The root CA certificate</h1>
+
+{% if ca_facts %}
+<p class="lede">
+Download the root certificate and install it wherever a client has to trust certificates issued by this CA. The download
+is named <code>mypki-root-ca.crt</code> on purpose: Windows' double-click installer keys off the <code>.crt</code> extension.
+</p>
+
+{# 0.3.0: this is the ONE page that states what this host's root CA is. The card that used to repeat these facts above the
+   Sign-CSR form is gone (page-map §1): a fact shown in two places is two facts that can drift apart, and the user's own
+   words for it were "the /ca menu already owns it". So the assertions about BasicConstraints and key presence — the ones
+   `scripts/smoke_test.sh` §1 and two tests in test_views.py carry — moved here rather than being deleted with the card.
+   Everything in this table comes from `describe_ca`, which has no parameter that could ask for something private, plus one
+   boolean for key presence. #}
+<section class="card">
+  <h2>This host's root CA &mdash; verify it out of band first</h2>
+  <table class="facts">
+    <tr><th scope="row">Subject</th><td>{{ ca_facts.subject }}</td></tr>
+    {% if ca_facts.common_name %}<tr><th scope="row">CN</th><td>{{ ca_facts.common_name }}</td></tr>{% endif %}
+    {% if ca_facts.organization %}<tr><th scope="row">O</th><td>{{ ca_facts.organization }}</td></tr>{% endif %}
+    {% if ca_facts.country %}<tr><th scope="row">C</th><td>{{ ca_facts.country }}</td></tr>{% endif %}
+    <tr><th scope="row">Serial (hex)</th><td class="mono">{{ ca_facts.serial_hex }}</td></tr>
+    <tr><th scope="row">Valid (UTC)</th><td>{{ ca_facts.not_before_utc.strftime('%Y-%m-%d %H:%M:%S') }}Z &rarr; {{ ca_facts.not_after_utc.strftime('%Y-%m-%d %H:%M:%S') }}Z</td></tr>
+    <tr><th scope="row">SHA-256 fingerprint</th><td class="mono wrap">{{ ca_facts.fingerprint_sha256 | fingerprint }}</td></tr>
+    <tr><th scope="row">Key</th><td>{{ ca_facts.key_type }}</td></tr>
+    {# The extension that makes this certificate a root at all, spelled out rather than left to the client's viewer:
+       `CA:TRUE pathLength:0` is what mypki writes (page-map §4) — this root may sign leaves but not subordinate CAs. #}
+    <tr><th scope="row">BasicConstraints</th><td class="mono">{{ ca_facts.basic_constraints or 'not present' }}</td></tr>
+    {# A boolean and never a path (page-map §1): "can this host sign?" is a fact an operator needs; where the key file sits
+       is not, and no page here prints it. #}
+    <tr>
+      <th scope="row">CA private key on this host</th>
+      <td>{{ 'present &mdash; this host can sign' | safe if ca_key_present else 'absent &mdash; this host cannot sign' | safe }}</td>
+    </tr>
+  </table>
+  <p class="warning">
+    Compare this fingerprint against what your client shows after installation. Installing a root certificate into the
+    Trusted Root store is the one action that makes every certificate this CA issues trusted &mdash; do not do it on faith.
+  </p>
+  {# 0.5.0: the certificate itself, on the page that already describes it. Until now this page stated facts about the
+     root (subject, serial, fingerprint, BasicConstraints) and offered a download, but never showed the bytes -- so an
+     operator installing into a device with no file transfer had nothing to copy. The block is the same PEM
+     `GET /ca/certificate` serves as an attachment, rendered here rather than re-derived: one source, one answer.
+     A certificate is public material, so this adds no exposure (test_no_key_leakage.py's armour regex and its
+     "no bytes of this CA's private key" checks still apply to this page). #}
+  {% if ca_pem %}
+  <h3>The certificate (PEM)</h3>
+  <pre class="pem" id="pem-ca">{{ ca_pem }}</pre>
+  <p class="copy-row">
+    <a class="button" href="/ca/certificate">Download mypki-root-ca.crt</a>
+    <button type="button" class="copy-pem" data-mypki-copy="pem-ca" data-mypki-label="The CA certificate">Copy to clipboard</button>
+  </p>
+  <p class="hint">Copying is the same bytes as the download. If the button reports a failure, this host is being served
+     over plain HTTP, where browsers refuse clipboard access &mdash; use Download.</p>
+  {% else %}
+  <p><a class="button" href="/ca/certificate">Download mypki-root-ca.crt</a></p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Install instructions</h2>
+
+  <h3>Windows</h3>
+  <ol>
+    <li>Double-click <code>mypki-root-ca.crt</code> &rarr; <strong>Install Certificate…</strong></li>
+    <li>Store Location: <strong>Local Machine</strong> (needs elevation).</li>
+    <li>Select <strong>Place all certificates in the following store</strong> &rarr; Browse &rarr;
+        <strong>Trusted Root Certification Authorities</strong>.</li>
+    <li>Finish, then confirm the certificate appears under <code>certlm.msc</code> &rarr; Trusted Root Certification
+        Authorities &rarr; Certificates.</li>
+  </ol>
+  <p>Command form, from an elevated prompt:</p>
+  <pre class="cmd">certutil -addstore -f ROOT mypki-root-ca.crt</pre>
+
+  <h3>macOS</h3>
+  <ol>
+    <li>Open <code>mypki-root-ca.crt</code> in <strong>Keychain Access</strong> and add it to the <strong>System</strong> keychain.</li>
+    <li>Open the certificate &rarr; Show &rarr; expand <strong>Trust</strong>.</li>
+    <li>Set <em>When using this certificate</em> to <strong>Always Trust</strong>.</li>
+  </ol>
+
+  <h3>Linux (Debian/Ubuntu and similar)</h3>
+  <pre class="cmd">sudo cp mypki-root-ca.crt /usr/local/share/ca-certificates/mypki-root-ca.crt
+sudo update-ca-certificates</pre>
+  <p class="hint"><code>update-ca-certificates</code> only processes files ending in <strong>.crt</strong>, which is why the
+     download carries that extension here too &mdash; a file saved as <code>mypki-root-ca.pem</code> would sit in that
+     directory and be silently ignored.</p>
+  <p>On RPM-based systems, copy to <code>/etc/pki/ca-trust/source/anchors/</code> and run
+     <code>sudo update-ca-trust extract</code>.</p>
+
+  <h3>Firefox</h3>
+  <p>Firefox uses its own trust store by default. Either enable <em>Use the system certificate authorities</em> under
+     Settings &rarr; Privacy &amp; Security &rarr; Certificates, or import the file there and tick
+     <em>This certificate can identify websites</em>.</p>
+
+  <h3>Java / JDK trust store</h3>
+  <pre class="cmd">keytool -importcert -trustcacerts -alias mypki \
+    -file mypki-root-ca.crt \
+    -keystore "$JAVA_HOME/lib/security/cacerts"   # default password: changeit</pre>
+
+  <h3>What installation does not do</h3>
+  <p>Installing the root makes issued certificates <em>trusted</em>. It does not make them <em>revocable</em> on its own.
+     From 0.7.0 this host signs a CRL and answers OCSP (<a href="/crl">/crl</a>), but installing a root copies it into a
+     trust store and stops there: no client is told to consult the CRL, openssl never fetches one even when a certificate
+     carries the pointer, and certificates issued before 0.7.0 carry no pointer at all. A certificate you stop trusting
+     therefore stays valid until it expires unless the client actively asks. Keep validity short.</p>
+</section>
+{% else %}
+<p class="notice">{{ no_ca_notice }}</p>
+{% endif %}
+{% endblock %}

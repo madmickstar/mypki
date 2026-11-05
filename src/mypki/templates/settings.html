@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{# 0.4.0: the resolved-state table is gone, and with it three note blocks that existed only to explain that table.
+   What replaced them is smaller and closer to the thing being asked: the form is the page, the Storage status panel
+   answers "where am I actually running", and the 'Not editable here' card now carries each unmanaged knob's presence
+   flag (which the table used to carry) so removing the table did not make MYPKI_SECRET_KEY less observable.
+
+   The visual language is still the reference design the user supplied (Style/settings_1..4.png): a blue section heading
+   above a hairline-bordered card, UPPERCASE letter-spaced field labels, a hint line under every input, one read-only
+   status panel inside a section, and one full-width Save button at the bottom.
+
+   What did NOT change is the masked half of the contract: MYPKI_SECRET_KEY renders as a presence flag, no CA or instance
+   key path appears anywhere on this page, and test_no_key_leakage.py still fetches the page from outside to prove it. #}
+{% macro pending_saved(field) %}
+{# 0.5.0: the sentence beside a restart-only box whose file and process disagree. Rendered from one macro rather than
+   pasted three times, because the checkbox arm, the dropdown arm and the plain-input arm are three arms of one promise
+   and a per-arm copy is the kind of text that drifts. `field.pending_saved` is only ever true for a knob in
+   STARTUP_ONLY_KNOBS whose saved line differs from what this process resolved (app._pending_saved_value), so this never
+   appears beside a knob that already took effect, and never on a host that has never saved anything.
+
+   The box keeps showing the SAVED value; this says out loud what is still running. Before 0.5.0 the two facts shared
+   one box and only one could be on screen, which is why the operator report was "I typed 8444 and the box still says
+   8443". #}
+<p class="pending-saved">
+  <span class="restart-marker">active only after reboot</span>
+  this process is still running <span class="mono">{{ field.knob }}</span> as <span class="mono"
+  >{% if field.live_value %}{{ field.live_value }}{% else %}unset here{% endif %}</span>; the saved value goes live at
+  the next start.
+</p>
+{% endmacro %}
+
+{% block content %}
+
+<h1>Settings</h1>
+
+<p class="lede">
+Every knob mypki knows about, editable here and saved to <code>{{ config_file }}</code>. Since 0.4.0 a save is applied
+by this process as well as written for the next one &mdash; except the four knobs that <em>are</em> the listener, the
+session cookie or the data directory, which are marked in red wherever they appear. Since 0.5.0 those four boxes show
+what the file says and say beside it what this process is still running, so the saved value and the live value are both
+on screen at once instead of one being inferred from the other.
+</p>
+
+{% if no_ca_notice %}
+<p class="notice">{{ no_ca_notice }}</p>
+{% endif %}
+
+{% if problems %}
+{# The same amber surface the sign page uses for a rejected field (app.py's `ERROR_SURFACE_RULE`): nothing was written, and the
+   reason names the knob and the bound it failed. A bad save must never reach the file, because a value pydantic dislikes is a
+   CA that refuses to start. #}
+<section class="form-errors">
+  <h2>Not saved &mdash; fix this and submit again</h2>
+  <ol>
+    {% for problem in problems %}<li>{{ problem }}</li>{% endfor %}
+  </ol>
+  <p class="note">Nothing was written to <code>{{ config_file }}</code>. Every value you typed is still filled in above.</p>
+</section>
+{% endif %}
+
+{% if just_saved %}
+{# The one-word green confirmation the user asked for, and the sentence that stops it being over-read. "Saved" alone is
+   ambiguous in exactly the way 0.3.0 was ambiguous: it could mean "the file changed" or "this page's behaviour changed",
+   and after 0.4.0 those are different answers for different knobs. So the word is green and large, and what moved is
+   named beside it in the two groups that actually behave differently. #}
+<section class="done">
+  {# The one word, in green, is the pill. `test_settings_save.py` and both smoke harnesses read the file path out of
+     this line (`saved to <code>…</code>`), so the wording below stays scrapeable even though the emphasis moved. #}
+  <p class="saved-word"><span class="pill active">Saved</span> to <code>{{ config_file }}</code></p>
+  {% if changed %}
+  <ul class="changed-list">
+    {% for knob in changed %}
+    <li>
+      <span class="mono">{{ knob }}</span>
+      {% if knob in restart_needed %}<span class="restart-marker">active only after reboot</span>{% else %}<span class="live-marker">applied now</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if restart_needed %}
+  <p class="restart-note">
+    {% for knob in restart_needed %}<span class="mono">{{ knob }}</span>{{ ', ' if not loop.last }}{% endfor %}
+    {{ 'are' if restart_needed | length != 1 else 'is' }} read once at startup: restart mypki before these take effect.
+  </p>
+  {% endif %}
+  {% if live_changed %}
+  <p class="note">
+    The rest took effect immediately &mdash; the next request this server answers is already using them. No reboot needed
+    for those.
+  </p>
+  {% endif %}
+  {% else %}
+  Every value was already what this file said, so the file is unchanged apart from its header.
+  {% endif %}
+</section>
+{% endif %}
+
+<form method="post" action="/settings" class="settings-form stacked">
+  {{ csrf_field(request) | safe }}
+
+  {% for section in sections %}
+  <h2 class="section-heading">{{ section.title }}</h2>
+  <section class="card settings-section">
+    {% for field in section.fields %}
+      {% if field.kind == 'checkbox' %}
+      <div class="field field-checkbox" data-mypki-state-field>
+        <label for="f_{{ field.name }}">{{ field.knob }}</label>
+        {# `value="true"` rather than the HTML default "on": what lands in `<config>/mypki.env` is what this box posts, and
+           `MYPKI_LOG_TO_CONSOLE=true` is the spelling every other mypki document uses. An unticked checkbox posts nothing at
+           all, which `app._submitted_settings_fields` turns into an explicit `false`, so "off" is a written decision rather
+           than an absent line that silently reverts to mypki's default. #}
+        <label class="checkbox-line">
+          <input id="f_{{ field.name }}" type="checkbox" name="{{ field.knob }}" value="true"{% if field.value %} checked{% endif %} data-mypki-state-toggle>
+          <span class="checkbox-state {{ 'state-on' if field.value else 'state-off' }}">{{ 'on' if field.value else 'off' }}</span>
+        </label>
+        {% if field.pending_saved %}{{ pending_saved(field) }}{% endif %}
+        <p class="hint">{{ field.hint }}</p>
+      </div>
+      {% elif field.choices %}
+      {# 0.4.0 dropdowns for the Issuing limits. The menu is convenience, never policy: `app._preset_choices` filtered
+         these values against the same `Field(ge=…, le=…)` objects pydantic enforces at startup, and the number box below
+         carries those bounds as min=/max=. A value already in force that no preset matches (a host running 7 SANs, say)
+         selects Custom rather than being rounded to the nearest suggestion.
+
+         The <select> deliberately carries NO name attribute: only the number input posts, so a dropdown can never send a
+         value the server has not already bounds-checked, and a browser with JavaScript off sees both controls and edits
+         the authoritative one. #}
+      <div class="field field-choice{% if field.custom %} custom-open{% endif %}" data-mypki-choice>
+        <label for="c_{{ field.name }}">{{ field.knob }}</label>
+        <select id="c_{{ field.name }}" data-mypki-select-for="f_{{ field.name }}">
+          {% for choice in field.choices %}
+          <option value="{{ choice }}"{% if not field.custom and choice|string == field.text_value %} selected{% endif %}>{{ choice }}</option>
+          {% endfor %}
+          <option value="{{ custom_choice }}"{% if field.custom %} selected{% endif %}>Custom&hellip;</option>
+        </select>
+        <input id="f_{{ field.name }}" name="{{ field.knob }}" type="number"
+               {% if field.min is not none %}min="{{ field.min }}"{% endif %}
+               {% if field.max is not none %}max="{{ field.max }}"{% endif %}
+               value="{{ field.value }}" spellcheck="false">
+        {% if field.pending_saved %}{{ pending_saved(field) }}{% endif %}
+        <p class="hint">{{ field.hint }}</p>
+      </div>
+      {% else %}
+      <div class="field">
+        <label for="f_{{ field.name }}">{{ field.knob }}</label>
+        <input id="f_{{ field.name }}" name="{{ field.knob }}"
+               type="{% if field.kind == 'number' %}number{% else %}text{% endif %}"
+               {% if field.min is not none %}min="{{ field.min }}"{% endif %}
+               {% if field.max is not none %}max="{{ field.max }}"{% endif %}
+               value="{{ field.value }}" spellcheck="false">
+        {% if field.pending_saved %}{{ pending_saved(field) }}{% endif %}
+        <p class="hint">{{ field.hint }}</p>
+      </div>
+      {% endif %}
+    {% endfor %}
+
+    {% if section.title == 'Storage' and status_rows %}
+      {# The read-only panel the reference design puts inside a section: label left, value right, colour from the state
+         itself. It lives in the Storage section because that is the section whose inputs change it. #}
+      <div class="status-panel">
+        <h3>Currently on this host</h3>
+        <table class="facts">
+          {# `class="mono"` is kept exactly as-is for a row in its normal state, and only an off-normal state adds the colour
+             class. That is a rendering choice with a test consequence worth naming: both smoke harnesses scrape the resolved
+             data directory out of this panel to feed their key-path leak sweep (`grep -A 1 'Data directory (resolved)'` then a
+             `<td class="mono">…</td>` match), so a status colour on every row would silently break a check that exists to
+             prove nothing private is rendered. #}
+          {% for row in status_rows %}
+          <tr>
+            <th scope="row">{{ row.label }}</th>
+            <td class="mono{% if row.state != 'ok' %} status-{{ row.state }}{% endif %}">{{ row.value }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+        <p class="note">
+          These are what this process resolved, and they are shown because their whole purpose is "where did it actually
+          land". The CA's private key and the session-signing secret live under the data directory and are
+          <strong>not listed anywhere on this page</strong>: a page with no logins is not where a key path belongs.
+        </p>
+        {# 0.4.0: the two notes below are everything the deleted resolved-state table's three note blocks said that is
+           still true, relocated here so they render on a plain GET too. The reader who never pressed Save is the one
+           most likely to be puzzled by "I saved it and nothing changed", and this panel is on the page for them. #}
+        <p class="note">
+          The order values are read in, highest first: a real environment variable, then <code>mypki serve</code> flags,
+          then <code>{{ config_file }}</code> (the file this page writes), then <code>./.env</code> in the working
+          directory. So a save that appears to do nothing usually has a shell variable or a flag sitting above it, and a
+          knob set in a shell stays set no matter what is typed into these boxes.
+        </p>
+        <p class="note">
+          What "came from" can and cannot tell you: <em>mypki default</em>, <em>supplied by the operator</em>, or
+          <em>mypki default (passed through explicitly)</em> &mdash; the last when a value equal to mypki's own default
+          reached this app through an explicit route (a CLI merge, or a constructor), which is worth separating from
+          "nobody said anything". A value that arrived from a <code>.env</code> file, one from a shell variable and one from a
+          command-line flag are <strong>indistinguishable here</strong>: pydantic-settings resolves that
+          precedence internally and keeps no record of which layer won. Stating the limit is the honest answer &mdash;
+          naming a layer this process cannot name would be a guess printed as a fact.
+        </p>
+      </div>
+    {% endif %}
+  </section>
+  {% endfor %}
+
+  <h2 class="section-heading">Not editable here</h2>
+  <section class="card settings-section">
+    {# 0.4.0: this card now states what each unmanaged knob currently <em>is</em>, which the removed resolved-state table
+       used to do. Presence only, never value or path — `test_no_key_leakage.py` asserts both presence strings from
+       outside and asserts that no resolved key path appears in the page body. #}
+    <table class="facts">
+      {% for row in unmanaged %}
+      <tr>
+        <th scope="row"><code>{{ row.knob }}</code></th>
+        <td><span class="mono">{{ row.presence }}</span> &mdash; {{ row.reason }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p class="note">
+      A line you write into <code>{{ config_file }}</code> by hand for any of these is left untouched when you press Save: this
+      page rewrites the knobs it manages and preserves the ones it does not.
+    </p>
+  </section>
+
+  <p class="restart-note">
+    Restart mypki after changing <span class="mono">MYPKI_HOST</span>, <span class="mono">MYPKI_PORT</span>,
+    <span class="mono">MYPKI_SESSION_MAX_AGE</span> or <span class="mono">MYPKI_DATA_DIR</span> &mdash; those four are
+    read once at startup. Every other knob on this page, the logging knobs included, is applied by this process as soon
+    as the save succeeds.
+  </p>
+
+  <button class="save-settings" type="submit">Save Settings</button>
+</form>
+
+<p class="note">
+  The limits that also appear on <a href="/about">About</a> (validity range, SAN cap, what this host is listening on) are the
+  ones worth quoting in a problem report. Version: <span class="mono">mypki {{ version or mypki_version }}</span>.
+</p>
+{% endblock %}

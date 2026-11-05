@@ -1,0 +1,187 @@
+name: CI
+
+# Triggers. `push` is scoped to main so a feature branch does not burn a four-OS × four-version matrix on every commit;
+# tags are what run the release path, and the pattern must match the tag convention check_version.py enforces (`vX.Y.Z`).
+on:
+  push:
+    branches: [main]
+    tags: ["v*.*.*"]
+  pull_request:
+  workflow_dispatch:
+
+# Read-only is all any job here needs: nothing in this workflow writes back to the repository, and a token that could is a
+# larger blast radius for a compromised dependency than the one this project can absorb.
+permissions:
+  contents: read
+
+# Cancel an in-flight run for the same ref rather than queueing a second one. Without it, three pushes in two minutes produce
+# three matrices and the third one — the only one that reflects what was actually pushed — finishes last.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ------------------------------------------------------------------ lint
+  ruff:
+    name: Ruff (lint + format)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install the package and dev extras
+        run: pip install -e ".[dev]"
+
+      # `src tests tools` — tools/ is linted for the same reason it is shipped in the sdist: check_version.py is a program
+      # people depend on to tell them whether a release is consistent, and an unlinted checker is a checker whose bugs are
+      # discovered by whoever is trying to cut a release at 23:00. Linting it costs one path argument; not linting it costs
+      # the tool's credibility.
+      - name: Ruff check
+        run: ruff check src tests tools
+
+      # `format --check` rather than `format`: CI that rewrites files reports success while leaving the repository dirty, and
+      # the next contributor cannot tell which of their lines a tool moved. Formatting is a contributor-side action (via
+      # pre-commit or `ruff format` locally); CI only verifies it happened.
+      - name: Ruff format check
+        run: ruff format --check src tests tools
+
+  # ------------------------------------------------------------------ types
+  mypy:
+    name: mypy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install the package and dev extras
+        run: pip install -e ".[dev]"
+
+      # `mypy src` only, deliberately not `mypy src tests`. The value of typing here is concentrated in the modules that
+      # touch cryptography objects and paths — ca.py, csr.py, signing.py, validators.py, store.py — where a wrong type is a
+      # wrong certificate. Tests are the freedom to construct awkward fixtures on purpose; forcing annotations on every
+      # throwaway dict and monkeypatched env would buy no safety and would make each new negative test cost two edits, which
+      # is how negative coverage gets skipped. `tools/` is excluded for a different reason: check_version.py is stdlib-only
+      # by contract and asserted to stay that way in tests/test_version.py, so it needs no project-wide typing configuration
+      # to be correct about itself.
+      - name: mypy on the package
+        run: mypy src
+
+  # ------------------------------------------------------------------ tests
+  pytest:
+    name: pytest (${{ matrix.os }} / Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # fail-fast: false — a Windows-only path bug is the most likely defect this project has (it is the reason one code
+      # path serves both OSes), and a matrix that cancels on the first Linux failure hides it. Every leg reports its own
+      # result even when another leg is red.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install the package and dev extras
+        run: pip install -e ".[dev]"
+
+      # The Windows leg is what proves two claims this project makes out loud: that path handling (XDG on POSIX,
+      # %LOCALAPPDATA% on Windows, pathlib only, no shell) works from one code path, and that NO OpenSSL binary is required
+      # anywhere — every certificate operation goes through `cryptography`, which ships cp39-abi3 win_amd64 wheels, so a
+      # green run on windows-latest with no toolchain installed is the assertion itself. If this leg ever needs an extra
+      # install step, that is a regression in the design rather than in the environment.
+      #
+      # --cov-fail-under=85 fails the job below the project's floor; the per-module ≥95% expectation for ca.py/csr.py/
+      # signing.py/validators.py is checked locally and visible in the term report, because a global average can hide an
+      # untested signing path behind well-tested CLI plumbing.
+      - name: pytest
+        run: python -m pytest --cov=mypki --cov-report=xml --cov-fail-under=85
+
+  # ------------------------------------------------------------------ living documentation
+  docs:
+    name: Living docs (no copied measurements)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # No `pip install` step, for the same reason the version job has none: check_docs.py is stdlib-only, so it runs against
+      # the tree as checked out. This gate reads markdown; installing the package to read documentation would mean a broken
+      # artifact had already been built before the reader of the docs was told the docs were wrong.
+      - name: Living documents carry no hand-copied measurements or line citations
+        run: python3 tools/check_docs.py
+
+      # The mutation check runs on every CI pass, not occasionally. A gate whose patterns match nothing is indistinguishable
+      # from a gate that passes, and the only way to tell those apart is to show each rule firing on synthetic text.
+      - name: Docs rules can actually fire (mutation self-test)
+        run: python3 tools/check_docs.py --self-test
+
+      # src/ prose gets the same treatment as the markdown: a docstring that names a release, records one probe run, or points at
+      # a planning document's numbering is history sitting inside living code, and it goes stale on the first behaviour change after
+      # it. Same stdlib-only contract as check_docs.py, so no `pip install` step here either — the gate reads the tree exactly as
+      # checked out, which is also what lets this job run in a checkout where mypki was never installed.
+      - name: src/ docstrings carry no release-time prose
+        run: python3 tools/check_docstrings.py
+
+      - name: src/ prose rules can actually fire (mutation self-test)
+        run: python3 tools/check_docstrings.py --self-test
+
+  # ------------------------------------------------------------------ harness parity: deliberately NOT a job here
+  # `tools/harness_parity.py` compares two smoke-harness logs heading for heading and per-section PASS count for per-section PASS
+  # count, so it needs exactly one log from each harness implementation. Given fewer than two usable logs it exits **2**, and this
+  # project reads exit 2 as "could not check", never as a pass — so wiring it into a push or pull_request job would fail every
+  # ordinary run for a reason unrelated to the diff, unless CI also drove both harnesses, which costs minutes per push and binds
+  # ports on the runner. It is therefore a release-time comparison rather than a gate on a diff: drive both harnesses, point this
+  # tool at the two logs they produced, and read `parity: OK` or `parity: NO` with one line per divergence. Its exit-code contract
+  # lives in docs/CHANGE_POLICY.md and README, because a job that cannot supply its own inputs can only assert that it refused to
+  # run.
+
+  # ------------------------------------------------------------------ version chain
+  version:
+    name: Version chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # fetch-depth: 0 — actions/checkout does NOT fetch tags by default, and this job's whole subject is refs/tags.
+          # Without this, `--require-tag` would report "no annotated tag v0.1.0 exists" on a run that was triggered *by*
+          # the tag v0.1.0: a false drift accusation against the one ref that proves the chain.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # No `pip install` step, on purpose. check_version.py imports nothing from mypki and is stdlib-only (asserted in
+      # tests/test_version.py), so the version guard runs against the source tree as checked out. Installing the package to
+      # check its version would mean the artifact with the wrong version had already been built by the time the checker
+      # spoke — which is the exact ordering this job exists to invert.
+      - name: Version chain (module -> manifest -> CHANGELOG)
+        run: python3 tools/check_version.py
+
+      # `--require-tag` only on a tag ref. MEASURED on this project's own tree: check_version.py exits **2** ("cannot
+      # check") when the version line exists but no release ref can be consulted, and 2 is explicitly not a pass — so
+      # running the tag link on an ordinary branch commit would fail every push to main for a reason that has nothing to
+      # do with the code. The gate is `startsWith(github.ref,'refs/tags/v')`, which matches the `on: tags:` trigger above:
+      # the tag link runs exactly when there is a tag to check.
+      - name: Version chain includes the release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: python3 tools/check_version.py --require-tag

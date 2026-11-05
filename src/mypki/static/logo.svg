@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- mypki's full mark: the glyph plus the wordmark, hand written (no icon font, no CDN, no script) so it satisfies the
+     app's own CSP: `default-src 'self'` means an <img src="/static/logo.svg"> is fine and nothing inside this file may
+     fetch or execute anything else.
+
+     The glyph is a signing seal with a keyhole cut through it: what a CA actually is, in one shape. A stamp that vouches
+     for something, and the private key that has to stay inside it. It is drawn on the same 64x64 grid as `favicon.svg`, so
+     the two files share identical path data rather than an artwork each to keep in sync.
+
+     XML comments may not contain a double hyphen, and this file is parsed as XML because it is served as
+     `image/svg+xml`. Every dash here is a single hyphen or a word for that reason (see static/favicon.svg for the measured
+     failure this rule prevents). -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 64" width="256" height="64" role="img" aria-label="myPKI">
+  <title>myPKI self hosted root CA</title>
+  <g>
+    <rect x="4" y="4" width="56" height="56" rx="12" fill="#12161d" stroke="#34d399" stroke-width="2.5"/>
+    <!-- Seal ring: the "certifies" half of the mark. -->
+    <circle cx="32" cy="32" r="19" fill="none" stroke="#4f9bd9" stroke-width="2"/>
+    <!-- Keyhole: a circle over a tapered slot, both cut in the page's near black so it reads as an absence rather than a
+         shape sitting on top. -->
+    <circle cx="32" cy="28" r="6.5" fill="#0b0e13"/>
+    <path d="M27 33 L37 33 L39.5 46 L24.5 46 Z" fill="#0b0e13"/>
+    <!-- One link of the chain on the ring, so the mark is not a perfect circle at a glance: this is a chain of trust, and a
+         perfectly symmetric logo would read as a padlock, which is a different promise. -->
+    <circle cx="32" cy="13" r="3.5" fill="#34d399"/>
+  </g>
+  <!-- The wordmark is text rather than paths because this file must stay readable and editable by an operator, and
+       `font-family` here is the same system stack style.css uses: no webfont, nothing fetched. -->
+  <text x="72" y="41" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+        font-size="27" font-weight="800" letter-spacing="-0.5" fill="#e7edf5">myPKI</text>
+  <text x="73" y="55" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+        font-size="11" letter-spacing="2.4" fill="#6d7a8c">SELF HOSTED ROOT CA</text>
+</svg>

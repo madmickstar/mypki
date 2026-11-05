@@ -1,0 +1,96 @@
+{# mypki's one layout (page-map §12). Fixed left sidebar carrying identity, navigation and the version; a main column of
+   cards. Follows the yt-dlp portal shape, with the strata colours from static/style.css.
+
+   Two constraints shape this file more than taste does:
+     * CSP `default-src 'self'; base-uri 'self'; frame-ancestors 'none'` with **no unsafe-inline** — so no <style> block and
+       no style="" attribute anywhere below, and every asset comes from /static on this host.
+     * **One same-origin script that no page requires** (0.3.0). The nav is seven links (0.5.0 added Inspect PEM), the icons are
+       inline SVG (markup, not a fetch), and every flow — signing, generating, downloading, revoking — works with JavaScript
+       switched off in the browser.
+       `static/app.js` adds three niceties on top: copy-to-clipboard for PEM blocks, a live "N selected" counter plus a select-all
+       box on /issued, and a modal that asks before a bulk revoke. Each has a server-side equivalent that is what the tests and
+       both smoke harnesses actually exercise. It is loaded with <script src>, which `default-src 'self'` already permits — no
+       unsafe-inline, no inline handler anywhere below, no CDN.
+     * Still no inline styles and still no second document: profile help text stays server-side on the sign page rather than
+       toggled by a click, because a description the operator has to click to find is a description some operators never find. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{# `standalone` is set only by app._standalone_error_page, which renders this file with no request object (a body-size
+   rejection happens before routing, so there is no request to build a URL from). The literal path matches the mount in
+   app.py; keeping both spellings in one place is what stops the standalone page from silently rendering unstyled. #}
+<link rel="stylesheet" href="{% if standalone %}/static/style.css{% else %}{{ url_for('static', path='style.css') }}{% endif %}">
+<link rel="icon" href="{% if standalone %}/static/favicon.svg{% else %}{{ url_for('static', path='favicon.svg') }}{% endif %}" type="image/svg+xml">
+<title>{% block title %}mypki{% endblock %} · mypki</title>
+</head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="/">
+    <img class="logo" src="{% if standalone %}/static/favicon.svg{% else %}{{ url_for('static', path='favicon.svg') }}{% endif %}" alt="myPKI logo">
+    <span>
+      <span class="wordmark">myPKI</span>
+      <span class="tagline">self-hosted root CA</span>
+    </span>
+  </a>
+
+  {% if not standalone %}
+  {# `path` is set by each page template. Comparing against it rather than asking a handler which page is "current" keeps
+     the highlight a rendering fact: a new route cannot forget to declare its own position in the nav. #}
+  {% set path = request.url.path %}
+  <nav class="nav">
+    <a class="nav-item{% if path == '/' or path == '/csr/sign' %} active{% endif %}" href="/">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 15.5 15.5 4l4.5 4.5L8.5 20H4z"/><path d="M13 6.5 17.5 11"/></svg>
+      <span>Sign CSR</span>
+    </a>
+    <a class="nav-item{% if path == '/csr/generate' %} active{% endif %}" href="/csr/generate">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="16" r="3.5"/><path d="M10.5 13.5 20 4"/><path d="M15 9l2.5 2.5"/></svg>
+      <span>Generate CSR</span>
+    </a>
+    <a class="nav-item{% if path == '/ca' %} active{% endif %}" href="/ca">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4-3 6.5-7 9-4-2.5-7-5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+      <span>CA certificate</span>
+    </a>
+    <a class="nav-item{% if path == '/issued' %} active{% endif %}" href="/issued">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      <span>Issued</span>
+    </a>
+    <a class="nav-item{% if path == '/about' %} active{% endif %}" href="/about">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v6"/><path d="M12 7.5h.01"/></svg>
+      <span>About</span>
+    </a>
+    <a class="nav-item{% if path == '/inspect' %} active{% endif %}" href="/inspect">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/><path d="M8 10.5h5M10.5 8v5"/></svg>
+      <span>Inspect PEM</span>
+    </a>
+    <a class="nav-item{% if path == '/settings' %} active{% endif %}" href="/settings">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h9M18 8h1M5 16h1M10 16h9"/><circle cx="16" cy="8" r="2.2"/><circle cx="7" cy="16" r="2.2"/></svg>
+      <span>Settings</span>
+    </a>
+  </nav>
+  {% endif %}
+
+  <div class="spacer"></div>
+  {# Version pinned bottom-left (yt-dlp layout): "which build is this" has to be answerable without scrolling, because the
+     first question in any bug report is exactly that. #}
+  <div class="build">mypki {{ version or mypki_version }}</div>
+</aside>
+
+<main>
+{% block content %}{% endblock %}
+</main>
+
+{# Loaded last, from this host only, and deliberately without `defer`/`async`: with no script at all every page above already
+   works, so the only thing the load order has to guarantee is that the DOM the script wires up exists by the time it runs.
+   A blocked or missing app.js leaves <html> without the `js-enhanced` class, which is how style.css knows to render none of the
+   JS-only decoration. #}
+<script src="{% if standalone %}/static/app.js{% else %}{{ url_for('static', path='app.js') }}{% endif %}"></script>
+
+<footer>
+  <span>mypki {{ version or mypki_version }}</span>
+  {% if issued_count is defined %}<span>{{ issued_count }} certificate{{ 's' if issued_count != 1 else '' }} on record</span>{% endif %}
+  {% if revoked_count is defined and revoked_count %}<span>{{ revoked_count }} revoked</span>{% endif %}
+</footer>
+</body>
+</html>

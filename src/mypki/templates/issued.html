@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% block title %}Issued certificates{% endblock %}
+{% block content %}
+<h1>Issued certificates</h1>
+
+<p class="lede">
+Newest first. There is no detail page, no search and no delete: a record is kept because it is evidence of what this CA
+signed (README "Known gaps"). A record can be <strong>marked revoked</strong>, one at a time or several at once &mdash; read
+the sentence under the table before you rely on that.
+</p>
+
+{% if no_ca_notice %}
+<p class="notice">{{ no_ca_notice }}</p>
+{% endif %}
+
+{# ------------------------------------------------------------------------------------------- confirmation step (0.3.0)
+   A POST to /issued/revoke without confirm=1 stamps nothing: it comes back here with this block at the TOP, naming every
+   certificate that is about to be stamped. This is the path a browser without JavaScript takes, and the path the test suite
+   and both smoke harnesses exercise; static/app.js renders its modal as a prettier route to the same POST. #}
+{% if pending %}
+<section class="confirm-revoke">
+  <h2>Revoke {{ pending | length }} certificate{{ 's' if pending | length != 1 else '' }}?</h2>
+  <p class="reason">This marks {{ pending | length }} record{{ 's' if pending | length != 1 else '' }} revoked on this host.</p>
+  <ul class="serial-list">
+    {% for item in pending %}
+    <li>
+      <span class="mono">{{ item.serial_hex }}</span>
+      <span>{{ item.common_name or '(no record with that serial on this host)' }}{% if item.cert_type %} &middot; {{ item.cert_type }}{% endif %}</span>
+      {% if not item.known %}<span class="status-bad">not a record on this host &mdash; it will be reported, not revoked</span>
+      {% elif item.already_revoked %}<span class="status-warn">already revoked &mdash; its stamp and reason will not change</span>
+      {% else %}<span class="status-ok">active now</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="cannot-undo">Revoking a record cannot be undone from this page: there is no un-revoke and no delete.</p>
+  <form method="post" action="/issued/revoke" class="stacked">
+    {{ csrf_field(request) | safe }}
+    {% for item in pending %}
+    <input type="hidden" name="serial_hex" value="{{ item.serial_hex }}">
+    {% endfor %}
+    <input type="hidden" name="confirm" value="1">
+    <label for="bulk_reason">Reason recorded with every one of them (optional)</label>
+    <input id="bulk_reason" name="reason" maxlength="120" placeholder="key compromised, wrong SANs, retired host&hellip;">
+    <p class="hint">Stored on each record and shown back in its Status cell. 120 characters maximum.</p>
+    <div class="confirm-actions">
+      <a class="button secondary" href="/issued">Cancel</a>
+      <button class="danger" type="submit">Revoke {{ pending | length }}</button>
+    </div>
+  </form>
+  <p class="note">
+    Nothing has been changed yet. This page is the confirmation step: mypki stamps a revocation only when the form above is
+    submitted with it.
+  </p>
+</section>
+{% endif %}
+
+{# --------------------------------------------------------------------------------------------- batch results (0.3.0)
+   Three counts, never one: store.revoke() answers None for a serial this host never signed and returns the untouched record
+   for an already-stamped one, so a batch can legitimately mix all three. Naming each serial is what keeps a stale browser tab
+   from looking like N successful revocations. #}
+{% if stamped or already or missing %}
+<section class="card {% if missing %}error{% else %}once{% endif %}">
+  <h2>Revocation batch</h2>
+  <p class="reason">
+    {{ stamped | length }} stamped now,
+    {{ already | length }} already revoked before this submit,
+    {{ missing | length }} with no record on this host.
+  </p>
+  {% if stamped %}
+  <ul class="serial-list">
+    {% for record in stamped %}
+    <li>
+      <span class="mono">{{ record.serial_hex }}</span>
+      <span>{{ record.common_name }} is marked revoked as of {{ record.revoked_at_utc.strftime('%Y-%m-%d %H:%M:%S') }}Z{% if record.revocation_reason %} &mdash; reason: {{ record.revocation_reason }}{% endif %}</span>
+      <span class="status-ok">stamped now</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if already %}
+  <ul class="serial-list">
+    {% for record in already %}
+    <li>
+      <span class="mono">{{ record.serial_hex }}</span>
+      <span>{{ record.common_name }} &middot; stamped {{ record.revoked_at_utc.strftime('%Y-%m-%d %H:%M:%S') }}Z{% if record.revocation_reason %} &mdash; reason: {{ record.revocation_reason }}{% endif %}</span>
+      <span class="status-warn">already revoked &mdash; its stamp and reason were left alone</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if missing %}
+  <ul class="serial-list">
+    {% for serial in missing %}
+    <li>
+      <span class="mono">{{ serial }}</span>
+      <span class="status-bad">no record with that serial in this host's database &mdash; nothing was changed</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if crl_note %}
+  <p class="{% if 'could not publish' in crl_note or 'cannot sign' in crl_note %}warning{% else %}done{% endif %}">
+    {{ crl_note }}
+  </p>
+  {% endif %}
+  <p class="note">
+    A stamp is a record on <em>this host</em>. From 0.7.0 this host also signs a CRL and answers OCSP, but a client only
+    acts on that if it knows to ask: certificates issued before 0.7.0 carry no pointer, and openssl never fetches one
+    (see <a href="/crl">/crl</a> for all four caveats). A client that already trusts one of these certificates may keep
+    trusting it until it expires.
+  </p>
+</section>
+{% endif %}
+
+{% if records %}
+{# One form around the whole table: every row's checkbox is a `serial_hex`, and the bar below is this form's submit control.
+   The select-all box in the header is what static/app.js drives; with JavaScript off it simply stays an unchecked box and
+   ticking rows by hand still works, because the server counts whatever arrives rather than trusting a counter. #}
+<form method="post" action="/issued/revoke" class="bulk-revoke">
+  {# The token has to be inside the form that can actually submit: with the old per-row forms it was rendered once per row,
+     and a page whose only control is this one bulk bar would otherwise carry no readable token at all (test_views.py reads
+     it off /issued, exactly as a browser does). #}
+  {{ csrf_field(request) | safe }}
+  <div class="select-bar">
+    {# 0.4.0: the counter starts at "0 selected" and app.js maintains it from the first tick, which is what makes a
+       single number readable instead of two sentences that can disagree (the 0.3.0 bar said "N records listed", the
+       script replaced it with "N selected", and between the two a reader could not tell whether untickable rows were
+       being counted). The sentence about what still works without JavaScript moved under the table, where it already
+       lives, rather than being duplicated in the bar. #}
+    <span class="select-count" data-mypki-count>0 selected</span>
+    <button class="danger solid" type="submit">Revoke Selected</button>
+  </div>
+
+  <table class="list">
+    <thead>
+      <tr>
+        {# The "All" box is wired by static/app.js and is one of only two things on this page that need it (the other is the
+           live count in the bar above). With JavaScript off it stays an inert box, which is stated under the table rather than
+           left to be discovered — an unexplained control looks like a broken one. #}
+        <th scope="col">
+          Select
+          <label class="select-all"><input type="checkbox" data-mypki-select-all aria-label="Select every tickable row"> All</label>
+        </th>
+        <th scope="col">Status</th>
+        <th scope="col">Serial (hex)</th>
+        <th scope="col">Type</th>
+        <th scope="col">Common name</th>
+        <th scope="col">SANs</th>
+        <th scope="col">Not before (UTC)</th>
+        <th scope="col">Not after (UTC)</th>
+        <th scope="col">Issued at (UTC)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for record in records %}
+      <tr>
+        {# A stamped row carries no checkbox: it cannot be re-revoked (store.revoke preserves the stamp on purpose) and there
+           is no delete, so offering a control for it would promise one of the two. #}
+        <td class="select-cell">
+          {% if record.revoked_at_utc %}
+            <span class="hint">&mdash;</span>
+          {% else %}
+            <input type="checkbox" name="serial_hex" value="{{ record.serial_hex }}" aria-label="Select serial {{ record.serial_hex }}">
+          {% endif %}
+        </td>
+        {# Two states, not three: a certificate past its not-after date still reports `active`, because this CA never revoked
+           it, and printing "expired" in a column whose other value is "revoked" would imply this host knows what every client
+           currently accepts (store.IssuedRecord.status). The date cell carries the expiry fact instead.
+
+           0.4.0 puts the revocation stamp here rather than in its own column: a row had a Status pill AND a Revoked column
+           saying almost the same thing, and the pair could disagree if one was misread. One cell now carries the decision,
+           when it was made and why. Both harnesses scrape `class="hint">revoked YYYY-MM-DD` from this cell, so the shape of
+           the stamp line is a contract even though its column is gone. #}
+        <td>
+          <span class="pill {{ record.status }}">{{ record.status }}</span>
+          {% if record.revoked_at_utc %}<span class="hint">revoked {{ record.revoked_at_utc.strftime('%Y-%m-%d %H:%M:%S') }}Z</span>{% endif %}
+          {% if record.revocation_reason %}<div class="hint">{{ record.revocation_reason }}</div>{% endif %}
+        </td>
+        <td class="mono">{{ record.serial_hex }}</td>
+        <td>{{ record.cert_type }}</td>
+        <td>{{ record.common_name }}</td>
+        {# Truncated in the cell, full value in title= : truncation that hides information is worse than truncation that admits it. #}
+        <td class="sans" title="{{ record.sans_display }}">{{ record.sans_display | truncate(72, true) or '—' }}</td>
+        <td>{{ record.not_before_utc.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td{% if record.is_expired %} class="past"{% endif %}>
+          {{ record.not_after_utc.strftime('%Y-%m-%d %H:%M:%S') }}
+          {% if record.is_expired %}<span class="pill expired" title="This validity window has passed on this host's UTC clock">past</span>{% endif %}
+        </td>
+        <td>{{ record.issued_at_utc.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+</form>
+
+<p class="hint">
+  Tick a row to include it, or use the <strong>All</strong> box in the Select column; <strong>Revoke Selected</strong> stamps
+  every ticked row after a confirmation step. That box and the count above the table are the only two things on this page that
+  need mypki's same-origin script; with JavaScript off, tick rows one at a time and <strong>Revoke Selected</strong> works
+  exactly the same, because the server counts what arrived rather than trusting a browser-side counter. A row already marked
+  revoked offers no box: there is no un-revoke and no delete here.
+</p>
+
+{# The modal (styled after Style/revoke_confirmation_1.png: bold title, an X, one sentence of consequence, a bordered monospace
+   list, the red line, Cancel beside the destructive button). It is hidden by CSS and only ever shown by app.js, and it submits
+   nothing on its own — Confirm adds `confirm=1` to the form above and submits it, which is byte-for-byte the POST the amber
+   confirmation block at the top of this page represents. Two paths to one handler, so "confirmed" cannot mean different things
+   depending on whether a script ran. #}
+<div class="modal" id="revoke-modal" hidden>
+  <div class="modal-box">
+    <div class="modal-head">
+      <h2 data-mypki-modal-count>Revoke selected certificates?</h2>
+      <button type="button" class="modal-close" data-mypki-modal-cancel aria-label="Close">&times;</button>
+    </div>
+    <p class="reason">This marks the certificates listed below revoked on this host.</p>
+    <ul class="serial-list" data-mypki-modal-list></ul>
+    <p class="cannot-undo">This cannot be undone: there is no un-revoke and no delete. It publishes a CRL entry for each row, which only helps clients that consult one.</p>
+    <div class="confirm-actions">
+      <button type="button" class="button secondary" data-mypki-modal-cancel>Cancel</button>
+      <button type="button" class="danger solid" data-mypki-modal-confirm>Revoke</button>
+    </div>
+  </div>
+</div>
+
+<p class="note">
+  {{ records | length }} of {{ issued_count }} record{{ 's' if issued_count != 1 else '' }} shown;
+  {{ revoked_count }} revoked. Revoking stamps the row and re-signs <a href="/crl">the published CRL</a>, which answers
+  OCSP too &mdash; but only clients that consult either will ever see the decision, and a certificate issued before 0.7.0
+  carries no pointer to them. For those, <strong>a revoked certificate stays trusted by clients until it expires</strong>.
+</p>
+{% else %}
+<p class="empty">Nothing has been signed on this host yet. <a href="/csr/sign">Sign a certificate</a> to add the first record.</p>
+{% endif %}
+{% endblock %}

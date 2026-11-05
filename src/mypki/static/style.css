@@ -1,0 +1,661 @@
+/* mypki UI: one stylesheet, one same-origin script, no CDN (page-map §0, §12).
+ *
+ * CSP is `default-src 'self'; base-uri 'self'; frame-ancestors 'none'` with **no unsafe-inline**, which shapes this file
+ * as much as the colours do: every rule here lives in this file because a `style="…"` attribute or a <style> block would be
+ * refused by the app's own header, and nothing here fetches a font or an icon from anywhere but this host. That is also why
+ * the palette is expressed as custom properties rather than per-element colours: one place to change, no inline styles to
+ * carry the change into.
+ *
+ * 0.3.0 changed "no JavaScript at all" into "one same-origin script that no page requires" (static/app.js: clipboard copy,
+ * the selection counter, the revoke modal). What did NOT change is what this consequence means for CSS: a rule may *style* a
+ * state the script toggles, but nothing on any page may depend on it. Every block below that mentions `.js-enhanced`,
+ * `data-mypki-*` or the modal is decoration over a flow that already works server-side — and the server-side version of each
+ * of those flows is what the tests and both smoke harnesses actually exercise.
+ *
+ * Layout follows the yt-dlp portal pattern (a fixed left sidebar carrying identity, navigation and version; a main column of
+ * cards), and the colours follow the "strata" reference: near-black page, dark hairline-bordered cards, green for
+ * active/positive, blue as the secondary, amber and rose reserved for things an operator should notice.
+ *
+ * Dependency-free by policy: system-ui/ui-monospace only, no @import, no url() to a remote host, no webfont. */
+
+:root {
+  /* Strata palette. `--page` is the deepest layer; each card sits one step lighter, so nesting reads as depth rather than
+     as decoration -- on a CA page where "which box is the warning" has to be answerable at a glance. */
+  --page: #0b0e13;
+  --sidebar: #0d1117;
+  --card: #12161d;
+  --card-soft: #161c25;
+  --line: #232b38;
+  --line-strong: #38465a;
+
+  --ink: #e7edf5;
+  --ink-soft: #97a4b5;
+  --ink-faint: #6d7a8c;
+
+  --green: #34d399;
+  --blue: #4f9bd9;
+  --amber: #e2a33c;
+  --rose: #f2555a;
+
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+  background: var(--page);
+}
+
+/* ------------------------------------------------------------------------------------------- sidebar (yt-dlp layout) */
+
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 1.1rem 1rem;
+  background: var(--sidebar);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.brand .logo { width: 34px; height: 34px; }
+.brand .wordmark { font-size: 1.2rem; font-weight: 800; letter-spacing: 0.02em; }
+.brand .tagline { display: block; font-size: 0.75rem; color: var(--ink-faint); font-weight: 500; }
+
+.nav { display: flex; flex-direction: column; gap: 0.15rem; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  text-decoration: none;
+}
+
+.nav-item:hover, .nav-item:focus { background: #16202c; color: var(--ink); }
+
+/* The active item carries both a blue tint and a left accent bar, so "which page am I on" does not depend on colour alone. */
+.nav-item.active {
+  background: #14202e;
+  border-left-color: var(--blue);
+  color: var(--ink);
+}
+
+.icon { width: 18px; height: 18px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; }
+
+.sidebar .spacer { flex: 1 1 auto; }
+
+.build {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--ink-faint);
+}
+
+/* --------------------------------------------------------------------------------------------- main column */
+
+main { margin-left: 250px; padding: 1.6rem 2rem 2rem; max-width: 78rem; }
+
+h1 { font-size: 1.7rem; font-weight: 800; margin: 0 0 0.35rem; letter-spacing: -0.01em; }
+h2 { font-size: 1.12rem; margin: 1.4rem 0 0.5rem; }
+h3 { font-size: 0.98rem; margin: 1.2rem 0 0.4rem; color: var(--ink-soft); text-transform: uppercase; letter-spacing: 0.06em; }
+
+.lede { color: var(--ink-soft); max-width: 46rem; margin: 0 0 1.2rem; }
+.banner { font-family: var(--mono); color: var(--green); }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1.1rem 1.25rem;
+  margin: 1.1rem 0;
+}
+
+/* Hero card: the action this page exists for gets a left accent border rather than a bigger box, which keeps every card the
+   same size while still answering "where do I start". */
+.card.hero { border-left: 3px solid var(--blue); background: var(--card-soft); }
+
+.card.once { border-left: 3px solid var(--green); }
+.card.error { border-left: 3px solid var(--rose); }
+
+.reason { font-size: 1.05rem; font-weight: 600; }
+.hint { color: var(--ink-faint); font-size: 0.86rem; margin: 0.15rem 0 0.4rem; }
+.note { color: var(--ink-soft); font-size: 0.9rem; }
+.empty { color: var(--ink-faint); font-style: italic; }
+
+.recovery { display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }
+
+/* ------------------------------------------------------------------------------------ inline form errors (0.2.0) */
+
+/* Rendered at the TOP of the page, above the form it is complaining about: an operator who mistyped one field out of nine
+   should read the reason before they start scanning inputs for it. */
+.form-errors {
+  border: 1px solid #6a4318;
+  border-left: 3px solid var(--amber);
+  background: #1b1509;
+  border-radius: 10px;
+  padding: 0.9rem 1.15rem;
+  margin: 0 0 1.2rem;
+}
+
+.form-errors h2 { margin: 0 0 0.4rem; font-size: 1rem; color: var(--amber); text-transform: uppercase; letter-spacing: 0.06em; }
+.form-errors ol { margin: 0; padding-left: 1.2rem; }
+.form-errors li { margin: 0.25rem 0; }
+
+/* A **refused** paste, named on the sign page itself instead of on a second page (--rose, the colour this app already
+   uses for "this was refused", see .card.error). It sits directly above the label of the textarea that produced it so
+   the reason and the thing to fix are one glance apart. Same box shape as .form-errors, different colour, because the
+   two say different things: amber is "one field needs a edit", rose is "this request will not be signed at all". */
+.form-errors.refused {
+  border-color: #6a2426;
+  border-left-color: var(--rose);
+  background: #1c1013;
+}
+
+.form-errors.refused h2 { color: var(--rose); }
+.form-errors.refused .reason { margin: 0; }
+
+/* --------------------------------------------------------------------------------------------- tables */
+
+table { border-collapse: collapse; width: 100%; }
+
+.facts th, .facts td { text-align: left; padding: 0.45rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+.facts th { width: 32%; color: var(--ink-soft); font-weight: 600; }
+
+.list { font-size: 0.88rem; }
+.list th, .list td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+
+/* Uppercase letter-spaced column headers (strata): a table header should read as a label band, not as another row of data. */
+.list thead th {
+  border-bottom: 1px solid #38465a;
+  color: var(--ink-faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sans { max-width: 20rem; overflow-wrap: anywhere; }
+
+/* A validity window that has already passed gets a dimmed date cell (page-map §5): the Status column deliberately stays
+   `active` — this CA never revoked that certificate — so the expiry fact lives in the date cell and needs its own rule. */
+td.past { color: var(--ink-faint); }
+.mono { font-family: var(--mono); font-size: 0.85rem; }
+.wrap { overflow-wrap: anywhere; }
+.num { font-family: var(--mono); }
+
+/* ------------------------------------------------------------------------------------ status chips (page-map §5) */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.16rem 0.6rem 0.16rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+/* The leading dot is what makes a chip scannable in a column of twelve, and it is drawn in CSS rather than as a character so
+   the text stays selectable and copy-pasteable. */
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+.pill.active { color: var(--green); border-color: #1d4b3a; background: #0f1b18; }
+.pill.revoked { color: var(--rose); border-color: #5c2226; background: #1b0f11; }
+.pill.expired { color: var(--amber); border-color: #4d3a15; background: #191408; }
+
+/* --------------------------------------------------------------------------------------------- forms */
+
+form.stacked { display: flex; flex-direction: column; gap: 0.5rem; max-width: 46rem; }
+fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 0.9rem 1rem; margin: 0 0 1rem; }
+legend { font-weight: 700; padding: 0 0.35rem; color: var(--ink-soft); }
+
+label { font-weight: 600; display: block; margin-top: 0.4rem; }
+label.radio { display: flex; align-items: center; gap: 0.45rem; font-weight: 700; margin-top: 0.7rem; }
+
+input, textarea, select {
+  font: inherit;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #0e131a;
+  color: var(--ink);
+  max-width: 100%;
+}
+
+textarea { font-family: var(--mono); font-size: 0.85rem; }
+input:focus, textarea:focus, select:focus { border-color: var(--blue); outline: none; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.75rem; margin-top: 0.5rem; }
+
+button, .button {
+  font: inherit;
+  display: inline-block;
+  padding: 0.5rem 0.95rem;
+  border: 1px solid var(--blue);
+  border-radius: 6px;
+  background: #173049;
+  color: #cfe4f7;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+button:hover, .button:hover { background: #1d3a58; }
+
+/* Outlined secondary button (yt-dlp): the same action shape as a primary, without competing for attention with it. */
+.button.secondary { border-color: var(--line-strong); background: transparent; color: var(--ink-soft); }
+
+button.danger { border-color: #5c2226; background: #1b0f11; color: #f3b4b8; }
+
+form.inline { display: flex; gap: 0.4rem; align-items: center; margin: 0; }
+form.inline input[type="text"] { font-size: 0.82rem; padding: 0.3rem 0.45rem; min-width: 12rem; }
+
+/* Profile help is server-rendered next to each radio (page-map §7): this app ships no JavaScript, so a description that
+   appeared on click would simply never appear. */
+.profile-help { color: var(--ink-soft); font-size: 0.88rem; margin: 0.2rem 0 0 1.6rem; max-width: 44rem; }
+
+/* What came from the request versus what mypki set. Stated as two lists rather than one sentence, because the old
+   "only the SANs are copied from your request" line was wrong about the subject. */
+.provenance { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 0.9rem; margin-top: 0.6rem; }
+.provenance h3 { margin-top: 0; }
+.provenance ul { margin: 0; padding-left: 1.2rem; color: var(--ink-soft); font-size: 0.88rem; }
+
+/* ----------------------------------------------------------------------------------- notices and advisories */
+
+.notice, .warning, .advisory, .done {
+  padding: 0.75rem 0.95rem;
+  border-radius: 10px;
+  margin: 1rem 0;
+  border: 1px solid var(--line);
+}
+
+.notice { background: #101b26; border-left: 3px solid var(--blue); }
+.warning { background: #191408; border-color: #4d3a15; border-left: 3px solid var(--amber); }
+.advisory { background: #101b26; border-left: 3px solid var(--blue); color: var(--ink-soft); }
+.done { background: #0f1b18; border-color: #1d4b3a; border-left: 3px solid var(--green); }
+
+/* A diff between what the request said and what this CA signed (page-map §3 step B). Amber rather than green: an edit that
+   went unnoticed is a mis-issuance, not a success. */
+.diff { background: #191408; border-color: #4d3a15; border-left: 3px solid var(--amber); }
+.diff dl { margin: 0.4rem 0 0; display: grid; grid-template-columns: max-content 1fr; gap: 0.2rem 0.8rem; }
+.diff dt { color: var(--amber); font-weight: 700; }
+.diff dd { margin: 0; font-family: var(--mono); font-size: 0.85rem; overflow-wrap: anywhere; }
+
+/* --------------------------------------------------------------------------------------------- code blocks */
+
+pre.pem, pre.cmd {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  background: #080b10;
+  color: #d7e3f0;
+  border: 1px solid var(--line);
+  padding: 0.8rem 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+pre.cmd { color: var(--ink); word-break: normal; }
+
+code { font-family: var(--mono); font-size: 0.9em; }
+
+dl.plain dt { font-weight: 700; margin-top: 0.7rem; }
+dl.plain dd { margin: 0.15rem 0 0; color: var(--ink-soft); }
+
+/* --------------------------------------------------------------------------------------------- footer */
+
+footer {
+  margin-left: 250px;
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  padding: 1rem 2rem 1.6rem;
+  border-top: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: 0.85rem;
+}
+
+a { color: var(--blue); }
+a:hover, a:focus { color: #7fb8e8; }
+
+/* ------------------------------------------------------------------ editable settings (0.3.0, page-map §12)
+ *
+ * Follows the reference design the operator supplied: a blue section heading sitting above a hairline card, UPPERCASE
+ * letter-spaced field labels, a hint line under every input, one read-only status panel inside a section, explicit
+ * restart-required wording and one full-width Save button at the end. The colours are the existing palette — a settings page
+ * that introduced a new blue would be a page with two blues to compare. */
+
+.section-heading {
+  color: var(--blue);
+  font-size: 0.95rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  margin: 1.6rem 0 0.35rem;
+}
+
+.card.settings-section { margin: 0 0 1.1rem; }
+
+.settings-form .field { margin: 0.9rem 0 0; }
+
+/* Field labels in the reference design are uppercase and letter-spaced, which is the same voice as `.list thead th` further
+   up this file: a label band should read as a label, not as another sentence of prose. */
+.settings-form .field > label {
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  margin-top: 0;
+}
+
+.settings-form .field input {
+  width: 100%;
+  max-width: 34rem;
+  background: #0e131a;
+  border-color: var(--line);
+}
+
+.settings-form .field .hint { max-width: 46rem; }
+
+/* --------------------------------------------------------------------- /inspect's paste box spans its section (0.5.2, page-map §13)
+
+   What an operator reported, and what the two rules above actually do to it: `form.stacked` caps *every* stacked form at 46rem,
+   and `.settings-form .field input` widens inputs while saying nothing about textareas — the generic `input, textarea, select`
+   rule a few blocks up supplies `max-width: 100%` but never a `width`, so a `<textarea rows="14">` falls back to the browser's own
+   default (~21rem). On /inspect that box sits between two `.card` sections that span `main` (78rem) above a 46rem button, which is
+   the mismatch. Widening the textarea alone would not fix it: the form's own 46rem ceiling would still clip it, so the cap has to
+   be lifted for this form as well.
+
+   The selector is `form.stacked.inspect-form` rather than `.settings-form` on purpose, twice over. `inspect.html` adds the class
+   `inspect-form` for no other reason than to make this scope possible; `/settings` posts through the same `settings-form stacked`
+   pair and its fields are inputs, not pastes, so widening that class would widen every settings field. And the compound selector
+   outranks `form.stacked` by specificity (two classes beat one) instead of relying on this block appearing later in the file — a
+   stylesheet that is reordered should not silently lose an operator's fix. The CSR textareas (`csr_pem`, `sans`, `c_sans`) stay
+   46rem-capped plain `stacked` forms: those boxes carry requests about to be signed, and their width is part of how the sign page
+   reads. `box-sizing: border-box` is global (top of this file), so `width: 100%` on a textarea needs no padding arithmetic.
+
+   The button follows the field it submits; a full-width paste box over a half-width Inspect button reads as an unfinished row, and
+   the rule is scoped to the same class so /settings' Save button keeps its 46rem ceiling. Nothing here has been *seen*: no browser
+   exists on the host these rules were written on, so SMOKE_TESTING §2 asserts only that the served stylesheet carries all three. */
+form.stacked.inspect-form { max-width: none; }
+
+form.inspect-form #pem_paste { width: 100%; max-width: none; }
+
+form.inspect-form button.save-settings { max-width: none; }
+
+.checkbox-line { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.checkbox-line input { width: auto; max-width: none; }
+
+/* 0.4.0: the on/off word beside a checkbox carries the state in colour, because "MYPKI_LOG_TO_CONSOLE" with a ticked
+   box is not an answer a reader can scan — `on` in green and `off` in rose are. Same --green/--rose the pills use; no
+   new colour enters the page. app.js re-paints these classes live when the box is ticked, and the server-rendered class
+   is already correct for a browser that runs no script. */
+.checkbox-state { font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; font-size: 0.78rem; }
+.checkbox-state.state-on { color: var(--green); }
+.checkbox-state.state-off { color: var(--rose); }
+
+/* The Issuing-limits dropdowns (0.4.0). Progressive enhancement, stated in CSS rather than in the script:
+   with no script the <select> is hidden and the authoritative number box is what you edit — a menu that cannot
+   constrain a text box is decoration. When app.js runs it opens `.custom-open` on the field, which reveals both,
+   because "Custom" is meaningless unless the box it reveals is visible. */
+.settings-form .field-choice select {
+  width: 100%;
+  max-width: 34rem;
+  background: #0e131a;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  margin-bottom: 0.35rem;
+}
+.settings-form .field-choice select { display: none; }
+.js-enhanced .settings-form .field-choice select { display: block; }
+.js-enhanced .settings-form .field-choice:not(.custom-open) input { display: none; }
+
+/* The read-only panel inside a section (reference settings_2/3): label left, value right, colour carrying the state. */
+.status-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card-soft);
+  padding: 0.7rem 0.9rem;
+  margin-top: 1.2rem;
+}
+
+.status-panel h3 { margin: 0 0 0.4rem; }
+.status-ok { color: var(--green); }
+.status-warn { color: var(--amber); }
+.status-bad { color: var(--rose); }
+
+.restart-note {
+  color: var(--ink-soft);
+  border: 1px solid #5c2226;
+  border-left: 3px solid var(--rose);
+  background: #1b0f11;
+  border-radius: 8px;
+  padding: 0.6rem 0.9rem;
+  margin: 1.2rem 0 0.8rem;
+  max-width: 46rem;
+}
+
+/* 0.4.0 save confirmation. `Saved` is the pill (the same green chip `/issued` uses for an active certificate) so the
+   page's "this worked" voice is one voice; the changed knobs are listed underneath each carrying its own marker,
+   because after hot-reload "saved" means two different things for two different groups of knobs. */
+.saved-word { margin: 0 0 0.5rem; font-weight: 700; }
+.changed-list { list-style: none; padding: 0; margin: 0 0 0.6rem; display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; }
+.changed-list li { display: flex; align-items: center; gap: 0.5rem; }
+.restart-marker { color: var(--rose); font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.74rem; }
+.live-marker { color: var(--green); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.74rem; }
+
+/* 0.5.0: the sentence beside a restart-only box whose saved value and live value disagree. It reuses `.restart-marker`
+   so "this needs a reboot" has ONE voice on the page whether it is spoken in the green block right after a Save or on an
+   ordinary visit weeks later, and it borrows `.restart-note`'s rose left border rather than inventing a third way of
+   being alarming. It sits inside the field, under the input, because the reader is looking at the box that disagrees —
+   a paragraph at the bottom of the form asks them to remember which box they just changed. */
+.pending-saved {
+  color: var(--ink-soft);
+  font-size: 0.84rem;
+  border-left: 3px solid var(--rose);
+  padding-left: 0.6rem;
+  margin: 0.35rem 0 0;
+  max-width: 46rem;
+}
+
+/* 0.5.0 (page-map §13): the findings on `/inspect`. They are deliberately NOT `.form-errors` — that block promises "nothing
+   was written, fix this and submit again", and on this page nothing needed fixing and there is nothing to submit again.
+   A finding is a fact about somebody else's certificate (expired, self-signed, not a CA, SHA-1), so it reuses --amber, the
+   colour this app already uses for "look at this" (.warning, .diff) rather than --rose, which it uses for "this was refused or
+   broken". No new colour enters the palette. */
+.findings { list-style: none; margin: 0.6rem 0 0; padding: 0; }
+.finding {
+  background: #191408;
+  border-left: 3px solid var(--amber);
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  padding: 0.4rem 0.6rem;
+  margin: 0.3rem 0;
+  max-width: 46rem;
+}
+
+button.save-settings {
+  width: 100%;
+  max-width: 46rem;
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #08111c;
+  font-weight: 700;
+  padding: 0.7rem 1rem;
+}
+
+button.save-settings:hover { background: #6fb0e6; }
+
+/* --------------------------------------------------------------------- bulk selection on /issued (0.3.0)
+ *
+ * The outlined blue bar above the table with the action button at its right end, per the reference design. Two bars (top and
+ * bottom) because a 500-row ledger puts the buttons a screen apart, and an operator who ticked rows at the top should not have
+ * to hunt for the control. Both submit the same form. */
+
+form.bulk-revoke { margin: 0; }
+
+.select-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 0.5rem 1rem;
+  margin: 1rem 0;
+  background: #0f1620;
+}
+
+/* 0.4.0 deleted the bar below the table: one 'Revoke Selected' sits where the rows are, and the sentence it used to
+   carry ("stamps every ticked row after a confirmation step") moved into the hint under the table that already
+   explains what still works without JavaScript. Two bars submitting the same form was two controls to read for one
+   action. */
+
+.select-count { color: var(--blue); font-weight: 700; }
+
+/* The live count is written by app.js into an element that already says something true without it ("N records listed — tick
+   the ones to revoke"), which is the whole progressive-enhancement rule in one markup decision: replacing a correct sentence
+   with a cleverer one is safe; replacing nothing with a spinner is not. */
+.select-count[data-mypki-count] { font-variant-numeric: tabular-nums; }
+
+.select-cell { width: 3rem; }
+.select-all { display: inline-flex; align-items: center; gap: 0.35rem; text-transform: none; letter-spacing: 0; margin-top: 0.25rem; font-weight: 600; color: var(--ink-soft); }
+
+/* Checked rows are tinted so "which ones did I tick" is answerable by looking at the table rather than at the checkboxes. */
+.list tbody tr.row-selected { background: #14202e; }
+
+/* ---------------------------------------------------------------- revoke confirmation (0.3.0, page-map §5)
+ *
+ * The server-side step: an amber block at the TOP of /issued naming every certificate about to be stamped. The reference
+ * design draws this as a modal; with no JavaScript it has to be a page section, and it is styled as close to that as a block
+ * in normal flow can be — title, one sentence of consequence, a bordered monospace list, the red line, then Cancel beside the
+ * destructive button. */
+
+.confirm-revoke {
+  border: 1px solid #5c2226;
+  border-left: 3px solid var(--rose);
+  background: #1b0f11;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin: 0 0 1.3rem;
+}
+
+.confirm-revoke h2 { margin: 0 0 0.3rem; color: var(--rose); font-size: 1.15rem; }
+.confirm-revoke .reason { color: var(--ink); margin: 0 0 0.6rem; }
+
+.serial-list {
+  list-style: none;
+  margin: 0.4rem 0 0.7rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #080b10;
+}
+
+.serial-list li { display: flex; flex-wrap: wrap; gap: 0.6rem; padding: 0.25rem 0; border-bottom: 1px solid var(--line); }
+.serial-list li:last-child { border-bottom: none; }
+
+.cannot-undo { color: var(--rose); font-weight: 700; margin: 0.3rem 0 0.8rem; }
+
+.confirm-actions { display: flex; gap: 0.7rem; align-items: center; margin-top: 0.6rem; }
+
+button.danger.solid { background: var(--rose); border-color: var(--rose); color: #16070a; font-weight: 700; }
+button.danger.solid:hover { background: #ff6b70; }
+
+/* ------------------------------------------------------------------------- copy buttons (0.3.0)
+ *
+ * A copy button is rendered by the server next to every PEM block and does nothing without JavaScript: the <pre> itself is
+ * selectable text, and the download link beside it is the flow that works everywhere. app.js replaces the button's label with
+ * an honest sentence when the browser refuses clipboard access (which plain HTTP does — see app.js's own measurement note),
+ * which is why `.copy-note` exists at all: a control that silently does nothing is worse than a control that says so. */
+
+.copy-row { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin: 0.5rem 0 0; }
+
+button.copy-pem {
+  border-color: var(--line-strong);
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  padding: 0.35rem 0.7rem;
+}
+
+button.copy-pem:hover { background: #16202c; color: var(--ink); }
+/* 0.4.0: success is bright green and four words long, reusing the palette's --green rather than inventing a third
+   green — Style/yt-dlp's `DETECTED` chip is the same idea, and `.pill.active` already owns this colour on this page.
+   A failure keeps amber and keeps its longer sentence: "it did not work, and here is what to do instead" is the one
+   message that must not be skimmable. */
+.copy-note { color: var(--green); font-weight: 700; font-size: 0.84rem; margin: 0.3rem 0 0; }
+.copy-note.failed { color: var(--amber); font-weight: 500; }
+
+/* --------------------------------------------------------------------- the JS-only revoke modal (0.3.0)
+ *
+ * Pure CSS + one class toggled by app.js. The modal is a prettier route to the same POST the amber block above represents, so
+ * it is hidden in the stylesheet and only ever shown by a script that has already checked the boxes exist: with JavaScript off
+ * `.modal` is `display: none` and nothing about revocation is unreachable. */
+
+.modal[hidden] { display: none; }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #05070b;
+  z-index: 20;
+}
+
+.modal-box {
+  width: min(38rem, 92vw);
+  background: var(--card-soft);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+}
+
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.modal-head h2 { margin: 0; font-size: 1.15rem; }
+
+button.modal-close {
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--ink-soft);
+  border-radius: 6px;
+  padding: 0.2rem 0.55rem;
+  font-size: 1rem;
+}
+
+/* A CA operator on a laptop, and a CA operator on a phone at the machine in the cupboard: below the breakpoint the sidebar
+   becomes a header strip so the form is never pushed off-screen. No JS, one media query. */
+@media (max-width: 900px) {
+  .sidebar { position: static; width: auto; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 0.8rem; }
+  .sidebar .spacer, .build { display: none; }
+  .nav { flex-direction: row; flex-wrap: wrap; }
+  main, footer { margin-left: 0; padding-left: 1rem; padding-right: 1rem; }
+}

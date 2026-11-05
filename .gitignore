@@ -1,0 +1,84 @@
+# mypki .gitignore
+#
+# Two rules govern everything below. (1) Runtime state never belongs in git: the CA's key material, the generated session
+# secret, the issued ledger and every log line are produced by running the thing, and a commit that captures them is a leak
+# with a diff attached. (2) The key-material block is deliberately broad (`*.pem`, `*.key`, `*.crt`, `*.csr`, `*.p12`) rather
+# than narrowed to `<data>/ca/`, because the mistake it protects against is an operator running `mypki init-ca` in the wrong
+# directory — which puts the CA key exactly here, and no amount of path-specific ignoring would notice.
+
+# ---------------------------------------------------------------- Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+sdist/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.eggs/
+MANIFEST
+
+# ---------------------------------------------------------------- virtualenvs
+.venv/
+venv/
+env/
+ENV/
+
+# ---------------------------------------------------------------- tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.tox/
+.nox/
+.pre-commit-config.yaml.bak
+
+# ---------------------------------------------------------------- editors / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------- environment
+.env
+.env.*
+!.env.example
+
+# ---------------------------------------------------------------- generated reports
+# `reports/harness-ledger.md` and `.json` are written by tools/harness_ledger.py from a harness log, on this machine, about
+# this machine's run: which ports were free, which pwsh build answered, how many scratch dirs were lying around. Committing
+# them would freeze one box's numbers into the repository as if they were a property of the release, which is the exact
+# confusion docs/CHANGE_POLICY.md exists to prevent. The documents link to this path instead of copying from it.
+reports/
+
+# ---------------------------------------------------------------- runtime state
+logs/
+*.log
+*.log.[0-9]*
+/data/
+instance/
+issued.db
+issued.db-*
+*.db-wal
+*.db-shm
+
+# ---------------------------------------------------------------- key material
+# Never commit any of these. `mypki-root-ca.crt` is a PUBLIC certificate and is still ignored, because the download exists
+# to be fetched from the running CA rather than frozen in a repository where it silently expires.
+*.pem
+*.key
+*.crt
+*.csr
+*.p12

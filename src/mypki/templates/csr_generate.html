@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Generate a key and CSR{% endblock %}
+{% block content %}
+
+{% if errors %}
+{# A typed field was rejected: the same form comes back at HTTP 200 with the reason named at the TOP and every non-secret
+   value still filled in (app.py `ERROR_SURFACE_RULE`). The passphrase fields are deliberately never repopulated. #}
+<section class="form-errors">
+  <h2>Nothing generated &mdash; fix this and submit again</h2>
+  <ol>
+    {% for problem in errors %}<li>{{ problem }}</li>{% endfor %}
+  </ol>
+  <p class="note">No key was generated, so nothing here wasted a keypair on a form that could not be signed.</p>
+</section>
+{% endif %}
+
+{% if advisory %}
+<p class="advisory">{{ advisory }}</p>
+{% endif %}
+
+<h1>Generate a private key and CSR</h1>
+
+<p class="lede">
+Mypki generates the key here, in this process, and shows it to you <strong>once</strong>. It is not written to disk, not
+written to the database, and not recoverable afterwards &mdash; if you do not copy or download it now, it is gone.
+</p>
+
+{% if no_ca_notice %}<p class="notice">{{ no_ca_notice }}</p>{% endif %}
+
+<form method="post" action="/csr/generate" class="stacked">
+  {{ csrf_field(request) | safe }}
+
+  <fieldset>
+    <legend>Subject</legend>
+    <label for="common_name">Common name (required)</label>
+    <input id="common_name" name="common_name" maxlength="253" required value="{{ values.get('common_name', '') }}"
+           placeholder="server.internal">
+    <p class="hint">A hostname, or a plain name like <em>Acme Support Desk</em>. If it looks like a hostname it is validated as one.</p>
+
+    <label for="sans">Subject Alternative Names (one per line, or comma-separated)</label>
+    <textarea id="sans" name="sans" rows="6" placeholder="server.internal&#10;*.internal&#10;10.0.0.7">{{ values.get('sans', '') }}</textarea>
+    <p class="hint">DNS names and IP addresses. Bare addresses become IP general names. Wildcards only as the leftmost label. Up to {{ max_sans }} entries.</p>
+
+    <div class="grid">
+      <div><label for="organization">Organization</label><input id="organization" name="organization" maxlength="128" value="{{ values.get('organization', '') }}"></div>
+      <div><label for="organizational_unit">Organizational unit</label><input id="organizational_unit" name="organizational_unit" maxlength="128" value="{{ values.get('organizational_unit', '') }}"></div>
+      <div><label for="country">Country (two letters)</label><input id="country" name="country" maxlength="2" size="3" value="{{ values.get('country', '') }}" placeholder="AU"></div>
+      <div><label for="state">State</label><input id="state" name="state" maxlength="128" value="{{ values.get('state', '') }}"></div>
+      <div><label for="locality">Locality</label><input id="locality" name="locality" maxlength="128" value="{{ values.get('locality', '') }}"></div>
+      <div><label for="email">Email</label><input id="email" name="email" type="email" maxlength="254" value="{{ values.get('email', '') }}"></div>
+    </div>
+    <p class="hint">These start pre-filled with this host's <code>MYPKI_DEFAULT_*</code> knobs &mdash; see <a href="/settings">Settings</a>. Clear one and it stays out of the certificate.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Key</legend>
+    <label for="key_type">Key type</label>
+    <select id="key_type" name="key_type">
+      {% for option in key_types %}
+      <option value="{{ option }}"{% if values.get('key_type', 'rsa-3072') == option %} selected{% endif %}>{{ option }}{% if option == 'rsa-3072' %} (default){% endif %}</option>
+      {% endfor %}
+    </select>
+
+    <div class="grid">
+      <div><label for="passphrase">Passphrase (optional, {{ passphrase_min }}+ characters)</label><input id="passphrase" name="passphrase" type="password" autocomplete="new-password"></div>
+      <div><label for="confirm">Confirm passphrase</label><input id="confirm" name="confirm" type="password" autocomplete="new-password"></div>
+    </div>
+    <p class="hint">
+      {{ passphrase_recommended }} or more is better than the {{ passphrase_min }}-character minimum: an encrypted key is only
+      as hard to guess as the passphrase that encrypted it. With a passphrase the key is returned as
+      <code>ENCRYPTED PRIVATE KEY</code>. The passphrase itself is not stored anywhere and is never echoed back on this page.
+    </p>
+  </fieldset>
+
+  <button type="submit">Generate</button>
+</form>
+
+{% if result %}
+<section class="card once">
+  <h2>Generated &mdash; shown once, stored nowhere</h2>
+  <p class="warning">
+    Copy or download both blocks now. This page is the only place these bytes will ever appear: mypki wrote nothing to disk
+    and nothing to the database, and a reload generates a <strong>different key</strong>.
+  </p>
+
+  <table class="facts">
+    <tr><th scope="row">Common name</th><td>{{ result.common_name }}</td></tr>
+    <tr><th scope="row">Key</th><td>{{ result.key_label }}</td></tr>
+    <tr><th scope="row">SANs</th><td>{% if result.sans %}{{ result.sans | join(', ') }}{% else %}none{% endif %}</td></tr>
+    <tr><th scope="row">Private key</th><td>{{ 'encrypted (PKCS#8)' if result.encrypted else 'unencrypted' }}</td></tr>
+  </table>
+
+  {# Copy buttons are enhancement, not the flow: the <pre> is selectable text and Download works with no script at all. That
+     distinction matters most here, where the artifact exists once — a "copy" control that silently did nothing would be an
+     operator losing a private key they believed they had copied (static/app.js names the clipboard rules it implements). #}
+  <h3>Certificate signing request</h3>
+  <pre class="pem" id="pem-csr">{{ result.csr_pem }}</pre>
+  <p class="copy-row">
+    <a class="button" href="{{ result.csr_download }}">Download CSR (.pem)</a>
+    <button type="button" class="copy-pem" data-mypki-copy="pem-csr" data-mypki-label="The CSR">Copy CSR</button>
+  </p>
+
+  <h3>Private key</h3>
+  <pre class="pem" id="pem-key">{{ result.key_pem }}</pre>
+  <p class="copy-row">
+    <a class="button" href="{{ result.key_download }}">Download private key (.key)</a>
+    <button type="button" class="copy-pem" data-mypki-copy="pem-key" data-mypki-label="The private key">Copy private key</button>
+  </p>
+
+  <p class="note">Next: paste the CSR into <a href="/csr/sign">Sign a certificate</a>, or use it wherever you need a request. The key
+  belongs to the service that will hold this certificate.</p>
+</section>
+{% endif %}
+{% endblock %}

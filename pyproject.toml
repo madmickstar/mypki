@@ -1,0 +1,128 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mypki"
+# Version is NOT declared here on purpose. `src/mypki/__init__.py::__version__` is the single source of truth
+# and hatchling reads that one line, so the built manifest and the importable attribute can never disagree.
+# A static `version = "..."` here would be two copies of one fact, and they drift the first time someone bumps
+# only one of them -- the wheel then advertises a version the imported package disagrees with.
+# `tools/check_version.py` enforces the whole chain (module -> manifest -> CHANGELOG -> tag) at build time.
+dynamic = ["version"]
+description = "Self-hosted mini-CA: create one root CA from the CLI, generate key+CSR in the browser, sign end-entity certificates."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["pki", "x509", "certificate-authority", "csr", "cryptography", "self-hosted"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security :: Cryptography",
+    "Topic :: System :: Systems Administration",
+]
+# python-multipart is a runtime dependency, not a dev extra: FastAPI's Form(...) parsing fails at request
+# time without it (MEASURED), and every form in this app is a Form(...) form.
+#
+# itsdangerous is listed explicitly rather than assumed to arrive with starlette. MEASURED on starlette 1.10:
+# `starlette.middleware.sessions` does `import itsdangerous` but declares it as the optional `starlette[sessions]`
+# extra, so a plain `pip install fastapi` leaves SessionMiddleware raising ModuleNotFoundError at app construction --
+# i.e. `mypki serve` would fail on import for anyone who installed this wheel. The reference PLAN says SessionMiddleware
+# "pulls in itsdangerous"; that holds only when something else already installed it (it is present in the development
+# environment for exactly that reason). Declaring it here is what makes the claim true for an install from scratch.
+dependencies = [
+    "fastapi>=0.110",
+    "python-multipart>=0.0.9",
+    "uvicorn>=0.29",
+    "cryptography>=42,<51",
+    "pydantic-settings>=2.2",
+    "jinja2>=3.1",
+    "itsdangerous>=2.2",
+]
+
+# Dev extras, plus one addition the BUILD_BRIEF's list does not name: `httpx2`. MEASURED on starlette 1.10 --
+# `starlette.testclient` imports `httpx2` and raises RuntimeError without it (plain `httpx` is accepted only as a
+# deprecated fallback). TestClient is how tests/conftest.py drives the five pages, so omitting this from `dev` means
+# `pip install -e ".[dev]" && pytest` aborts at collection on a fresh checkout -- the same class of failure that made
+# the reference project ship `tools/` in its sdist (pyproject note above). A stated divergence, not an oversight.
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.4",
+    "mypy>=1.9",
+    "pre-commit>=4",
+    "httpx2>=2.16",
+]
+
+[project.scripts]
+mypki = "mypki.cli:main"
+
+[tool.hatch.version]
+# The one place the number lives. Hatchling resolves it by static analysis (no import, no execution).
+path = "src/mypki/__init__.py"
+pattern = '^__version__ = "(?P<version>[^"]+)"$'
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mypki"]
+
+# The sdist names things file by file because the contents differ in kind.
+# `tools` is here because `tests` is: tests/test_version.py imports check_version out of tools/, and shipping
+# the suite without the module it imports means the sdist contains a test suite that aborts at collection with
+# ModuleNotFoundError -- which reads to a user as "this release is broken" rather than "this artifact omitted a
+# file". The exclude half is an assertion, not an absence: scripts/ and logs/ are operator-facing runtime
+# artifacts (tracked in git, useless in an install), and no key material may ever ship. tests/test_packaging.py
+# asserts both halves -- what is included, and that no include entry can reach an excluded thing.
+#
+# `docs/history` and `docs/measurement-history.md` joined the list when CHANGELOG.md was split, for the same reason
+# `tools` joined it for `tests`: the shipped `CHANGELOG.md` now says outright that everything below 0.7.0 lives one
+# file per release under `docs/history/`, and its entries link into both files. An artifact carrying the changelog but
+# not the history it points at is a changelog with dead paths in it -- and because every entry here is asserted as an
+# exact set, adding one is a deliberate edit in two places (this list and REQUIRED_INCLUDES) rather than a silent one.
+[tool.hatch.build.targets.sdist]
+include = [
+    "src",
+    "tests",
+    "tools",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "docs/page-map.md",
+    "docs/history",
+    "docs/measurement-history.md",
+]
+exclude = ["scripts", "logs", "*.pem", "*.key", "*.crt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+# tools/ is not part of the installed package, but tests/test_version.py imports check_version from it. Putting the
+# directory on pytest's pythonpath is what makes `pytest` work in a checkout that has not installed anything; the
+# alternative (sys.path surgery in conftest.py) would leak a path mutation into every test run, including the ones that
+# never touch the tool.
+pythonpath = ["tools"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
+# No `ignore = ["B008"]` here, unlike the reference project: mypki's routes read settings and CA material off
+# `app.state` instead of using Depends() in argument defaults, so the function-call-in-default-argument rule
+# has nothing to complain about. If a future route adds Depends(), restore the ignore with that comment.
+
+[tool.mypy]
+python_version = "3.10"
+strict = false
+ignore_missing_imports = true

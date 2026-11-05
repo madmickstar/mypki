@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}CRL{% endblock %}
+{% block content %}
+<h1>The certificate revocation list</h1>
+
+<p class="lede">
+This host publishes one signed artifact: <code>{{ crl_base_url }}/crl.pem</code>. Certificates issued from 0.7.0 onward
+carry that exact URL in their <code>CRLDistributionPoints</code>, so a client that knows how to fetch one can find this
+file without being told where it is. Everything below is the same bytes <code>GET /crl.pem</code> serves &mdash; read off
+the file on disk, not from what the last build remembered.
+</p>
+
+{% if not ca_facts %}
+<p class="notice">{{ no_ca_notice }}</p>
+{% elif crl_facts %}
+<section class="card once">
+  <h2>What is published right now</h2>
+  <table class="facts">
+    <tr><th scope="row">Issuer</th><td>{{ crl_facts.issuer }}</td></tr>
+    <tr><th scope="row">thisUpdate (UTC)</th><td>{{ crl_facts.this_update_utc.strftime('%Y-%m-%d %H:%M:%S') }}Z</td></tr>
+    <tr><th scope="row">nextUpdate (UTC)</th><td>{{ crl_facts.next_update_utc.strftime('%Y-%m-%d %H:%M:%S') }}Z</td></tr>
+    <tr>
+      <th scope="row">Stated freshness</th>
+      <td>{{ crl_facts.lifetime_hours }} hours &mdash; a fixed interval, not a knob (page-map §14)</td>
+    </tr>
+    <tr>
+      <th scope="row">CRL Number</th>
+      <td class="mono">{{ crl_facts.crl_number }}</td>
+    </tr>
+    <tr>
+      <th scope="row">Entries</th>
+      <td>{{ crl_facts.entry_count }} revoked certificate{{ 's' if crl_facts.entry_count != 1 else '' }} listed</td>
+    </tr>
+    <tr>
+      <th scope="row">Advertised URL</th>
+      <td class="mono wrap">{{ crl_base_url }}/crl.pem</td>
+    </tr>
+    <tr>
+      <th scope="row">OCSP responder</th>
+      <td class="mono wrap">{{ crl_base_url }}/ocsp &mdash; carried in the same certificates as
+          <code>AuthorityInfoAccess</code></td>
+    </tr>
+  </table>
+
+  {% if rebuilt %}
+  <p class="done">
+    Rebuilt. This is a <strong>re-sign of the same data</strong>: nothing here revokes anything, and no certificate was
+    changed. The entry set comes from the rows the Issued list already marks revoked.
+  </p>
+  {% endif %}
+
+  <h3>The artifact (PEM)</h3>
+  <pre class="pem" id="pem-crl">{{ crl_facts.pem }}</pre>
+  <p class="copy-row">
+    <a class="button" href="/crl.pem">Download {{ 'mypki.crl.pem' }}</a>
+    <button type="button" class="copy-pem" data-mypki-copy="pem-crl" data-mypki-label="The CRL">Copy to clipboard</button>
+  </p>
+  <p class="hint">Copying is the same bytes as the download. If the button reports a failure, this host is being served
+     over plain HTTP, where browsers refuse clipboard access &mdash; use Download.</p>
+
+  {% if can_rebuild %}
+  <form method="post" action="/crl/rebuild">
+    {{ csrf_field(request) | safe }}
+    <p class="copy-row">
+      <button type="submit" class="save-settings">Rebuild CRL</button>
+      <span class="hint">Re-reads the ledger, signs a fresh CRL and replaces the file. A rebuild is needed when
+        nextUpdate passes with no revocation in between: an expired CRL tells clients nothing about this CA.</span>
+    </p>
+  </form>
+  {% else %}
+  <p class="warning">
+    This host has no CA private key loaded, so it cannot sign a CRL. The artifact above is the last one this CA signed;
+    it stays published until nextUpdate passes. Run <code>mypki init-ca</code>, or supply the passphrase if the existing
+    key is encrypted.
+  </p>
+  {% endif %}
+</section>
+
+{# --------------------------------------------------------------------------------------------- honest limits (5a)
+   Four measured caveats, all four named on the page rather than only in CHANGELOG. Each one is a place where an
+   operator would otherwise believe revocation had happened and find out at a client that it had not. The wording is
+   kept close to the measurements in CRL_PLAN-0.7.0.md §2 so a reader who hits one can search for it. #}
+<section class="card advisory">
+  <h2>What this CRL does not do</h2>
+
+  <ol>
+    <li>
+      <strong>It carries no IssuingDistributionPoint, on purpose.</strong> An IDP scopes a CRL to a name or a subset of
+      certificates. Measured with openssl 3.5.6 against an IDP-scoped CRL (<code>full_name=http://mypki.my.lab/crl.pem</code>,
+      <code>only_contains_user_certs=True</code>, critical), <code>openssl verify -crl_check</code> answers
+      <code>error 44 at 0 depth lookup: different CRL scope</code> &mdash; for a perfectly valid leaf that carries no CDP
+      at all, which is every certificate this CA issued before 0.7.0. The plain CRL above verifies <code>OK</code>. So the
+      absence is not an omission waiting to be fixed: adding an IDP would make <code>-crl_check</code> unusable on this
+      CA's own history. No delta CRLs either.
+    </li>
+    <li>
+      <strong>Certificates issued before 0.7.0 carry no pointer.</strong> The CDP and AIA are added at signing time, so a
+      leaf minted in 0.2.0&ndash;0.6.0 says nothing about this file and mypki cannot edit it afterwards. There is no
+      migration and no re-issue. Those certificates can still be checked by handing the artifact to a client explicitly
+      (openssl: <code>-CRLfile mypki.crl.pem</code>).
+    </li>
+    <li>
+      <strong>openssl never fetches a CDP.</strong> Measured: with the CRL served live on a port and a leaf carrying the
+      correct URL, <code>openssl verify -crl_check</code> answered <code>error 3 at 0 depth lookup: unable to get
+      certificate CRL</code> and no GET ever appeared in this server's log. A baked pointer exists for clients that do
+      fetch (browsers, Go, curl-based tooling). For openssl you must pass <code>-CRLfile</code>, which is what mypki's own
+      smoke harness does.
+    </li>
+    <li>
+      <strong>A revoked certificate that has already expired drops out of the CRL and answers UNKNOWN.</strong> Entries are
+      rows stamped revoked <em>and</em> still inside their own validity, so a revoked-and-expired serial is absent from
+      this file while its row stays in <code>issued.db</code> forever. There is no un-revoke and no delete. OCSP answers
+      <strong>UNKNOWN</strong> for that serial rather than REVOKED or GOOD &mdash; the one answer that does not claim
+      something this CRL no longer says. The <code>CRL Number</code> above never decreases even when entries do, because
+      it counts stamps rather than rows in the file (RFC 5280 §5.2.1).
+    </li>
+  </ol>
+
+  <p class="note">
+    One more caveat stated because it changes what a client may accept: this responder is signed by <strong>the root CA
+    itself</strong>. RFC 6960 §4.2.2.2 permits a client to accept a response signed directly by the certificate of the
+    CA that issued the certificate being checked &mdash; that is what mypki does &mdash; but the same section also allows a
+    client to accept only responders holding the <code>id-kp-OCSPSigning</code> extended key usage, and a root does not carry
+    it. openssl 3.5 accepted this shape (measured). Whether a browser or a Go client insists on the EKU has not been tested
+    here, so treat OCSP as the convenience and the CRL file as the artifact you can verify yourself.
+  </p>
+</section>
+
+{# -------------------------------------------------------------------------------------------- OCSP limits (§15)
+   Three properties of the responder that an operator would otherwise assume in mypki's favour. Each one is a sentence
+   this page has to earn by being true, and each is asserted in tests/test_ocsp.py rather than trusted by eye. #}
+<section class="card advisory">
+  <h2>What the OCSP responder does not do</h2>
+
+  <ol>
+    <li>
+      <strong>The request's hashes are echoed, not verified.</strong> An OCSP request names a certificate by two hashes
+      plus a serial. This host answers with those hash values copied out of the request &mdash; it stores no certificate
+      bytes, and it cannot recompute them for a SHA-256 request (measured). So this responder cannot prove that the
+      request describes <em>this</em> CA at all. What it can prove is the answer: every status is drawn from its own
+      record store, which is why <strong>a foreign CertID yields UNKNOWN about a serial this host does not hold</strong>
+      rather than a statement about somebody else's certificate. Nobody but this CA's key can sign an answer here.
+    </li>
+    <li>
+      <strong>An oversized request gets mypki's HTML error page, not OCSP bytes.</strong> Two limits sit on this route,
+      and they are measured rather than guessed: the handler refuses any body over 8 KiB with the five-byte
+      MALFORMED_REQUEST answer at HTTP 200, while a body above <code>MYPKI_MAX_CSR_CHARS + 8192</code> &mdash;
+      <strong>40,192 bytes</strong> with the default knob &mdash; is answered by mypki's own <strong>HTTP 413 HTML
+      page</strong> before any OCSP code runs. The smaller limit answers first precisely so a client that sent garbage
+      still gets DER. No legitimate OCSP request reaches either number: real ones measure 73-101 bytes. If your client
+      reports that the responder returned HTML, this is what happened to it.
+    </li>
+    <li>
+      <strong><code>/ocsp</code> has no CSRF token, by design.</strong> Every other POST in this app requires one, and
+      this route is the single stated exception (page-map §0). A token proves that a page this host rendered to your
+      browser submitted the form; an OCSP request is a machine-to-machine DER body from a client that has never seen this
+      HTML and holds no cookie here. There is also no session state for a cross-site submit to abuse: the handler signs
+      what its own store already says about one serial &mdash; the same fact <code>GET /crl.pem</code> publishes. A
+      form-shaped POST to this URL gets the five-byte refusal and changes no record, which is asserted in mypki's tests
+      rather than promised on this page.
+    </li>
+  </ol>
+</section>
+
+<section class="card">
+  <h2>How to check it yourself</h2>
+  <pre class="cmd">curl -sSf {{ crl_base_url }}/crl.pem -o mypki.crl.pem
+openssl crl -in mypki.crl.pem -noout -text          # read what it says
+openssl crl -in mypki.crl.pem -noout -CAfile mypki-root-ca.crt   # verify the signature</pre>
+  <p class="hint">
+    The signature check is the point of this artifact: it is the first file mypki produces whose correctness a third party
+    can confirm without trusting this host's word. If <code>-CAfile</code> reports <code>verify failure</code>, the file
+    you fetched is not the one this CA signed.
+  </p>
+</section>
+{% else %}
+<p class="notice">
+No CRL has been published by this host yet. Startup signs one when a CA and its key are present, so this state means the
+startup build was skipped or failed &mdash; check the log for <code>startup CRL build failed</code>.
+</p>
+{% if can_rebuild %}
+<form method="post" action="/crl/rebuild">
+  {{ csrf_field(request) | safe }}
+  <p class="copy-row">
+    <button type="submit" class="save-settings">Rebuild CRL</button>
+    <span class="hint">Signs a CRL from the current ledger now. A CA that has never revoked anything publishes a valid
+      zero-entry artifact rather than nothing.</span>
+  </p>
+</form>
+{% endif %}
+{% endif %}
+
+<p class="note"><a href="/issued">Issued certificates</a> is where revocations are stamped; <a href="/ca">CA
+certificate</a> carries the root you need to verify this file against.</p>
+{% endblock %}

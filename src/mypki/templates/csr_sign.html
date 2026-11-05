@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+{% block title %}Sign a certificate{% endblock %}
+{# This template is `/` as well as `/csr/sign` (page-map §1): the front page is the action.
+
+   0.3.0: the "This host's root CA" card that used to sit above this form is GONE. It duplicated `/ca`, and a fact shown in
+   two places is two facts that can disagree; `/ca` is now the one page that states this host's CA subject, fingerprint,
+   BasicConstraints and whether the private key is loaded here (page-map §4). What stays on this page is only what changes
+   whether an operator can sign right now: the no-CA notice and the missing-key notice below. #}
+{% block content %}
+
+{% if errors %}
+{# `ERROR_SURFACE_RULE` is app.py's *name* for this rule: a constant there whose value is that file's module-docstring
+   heading. page-map §3 cites it by the same name. There are three surfaces now, two of them on this page. A field the operator typed comes back here at
+   HTTP 200 with the reason named at the TOP and every other value still filled in; a pasted request that was refused is named
+   in red directly above the box it belongs to (the `refused` block below), not on a separate error page. #}
+<section class="form-errors">
+  <h2>Not signed &mdash; fix this and submit again</h2>
+  <ol>
+    {% for problem in errors %}<li>{{ problem }}</li>{% endfor %}
+  </ol>
+  <p class="note">Nothing was signed. Your request is still staged on this page: change a field and re-submit, no re-paste needed.</p>
+</section>
+{% endif %}
+
+<h1>Sign a certificate</h1>
+
+<p class="lede">
+CSR requesting CA powers will be refused.
+</p>
+
+{% if no_ca_notice %}
+<p class="notice">{{ no_ca_notice }}</p>
+{% elif not ca_key_present %}
+<p class="notice">A CA certificate is present but its private key is not loaded on this host, so nothing can be signed here.</p>
+{% endif %}
+
+{# No CA facts card here as of 0.3.0: `/ca` carries them (subject, serial, validity window, fingerprint, key type,
+   BasicConstraints and key presence) so this page can be read as "the signing form" without a second copy of the root's
+   identity above it. The two notices below are what this page still has to say about the CA, because both change whether
+   the button on this page can do anything. #}
+
+{# Step A's paste form is shown only when nothing has been confirmed yet: once details are on screen the confirmation form
+   below is the live one, and leaving both visible invites a second paste that discards the first. #}
+{% if not issued and not details %}
+<form method="post" action="/csr/sign" class="stacked">
+  {{ csrf_field(request) | safe }}
+  {% if refused_reason %}
+  {# A refused paste is named **here**, in red (--rose), directly above the label of the box that produced it, and the
+     response still carries its own status — 400 for malformed input, 403 for a request this CA will not honour. The
+     status is what a script reads; this block is what an operator reads, without being moved to another page.
+     `error.html` still serves the refusals that have no form of their own (an oversized body refused before routing,
+     a missing CSRF token, `/inspect`). #}
+  <section class="form-errors refused">
+    <h2>Not signed &mdash; this request was refused</h2>
+    <p class="reason">{{ refused_reason }}</p>
+    {% if refused_hint %}<p class="hint">{{ refused_hint }}</p>{% endif %}
+  </section>
+  {% endif %}
+  <label for="csr_pem">Paste a CSR (PEM)</label>
+  <textarea id="csr_pem" name="csr_pem" rows="12" required spellcheck="false"
+            placeholder="-----BEGIN CERTIFICATE REQUEST-----&#10;MIIC...&#10;-----END CERTIFICATE REQUEST-----">{{ paste_value }}</textarea>
+  {% if paste_redacted %}
+  {# Echoing the paste back is what turns a refusal into a one-keystroke fix, so when part of it was filtered that has
+     to be said out loud: `inspect.redact_private_key_bodies` replaces a private key's base64 with a marker and keeps
+     the armour lines, because a key echoed into a rendered page lands in a browser cache and a support screenshot. #}
+  <p class="hint">{{ paste_redacted }} private-key block(s) in your paste were <strong>not</strong> echoed back — the armour lines are shown, the key body is not.</p>
+  {% endif %}
+  <p class="hint">Exactly one <code>BEGIN CERTIFICATE REQUEST</code> block, at most {{ max_csr_chars }} characters.</p>
+  <button type="submit">Validate and show details</button>
+</form>
+{% endif %}
+
+{% if details and not issued %}
+<section class="card hero">
+  <h2>This is what the request says</h2>
+  <table class="facts">
+    <tr><th scope="row">Subject</th><td>{{ details.subject.get('common_name') or '(no CN)' }}</td></tr>
+    {% for label, key in [('O', 'organization'), ('OU', 'organizational_unit'), ('C', 'country'), ('ST', 'state'), ('L', 'locality'), ('email', 'email')] %}
+      {% if details.subject.get(key) %}<tr><th scope="row">{{ label }}</th><td>{{ details.subject.get(key) }}</td></tr>{% endif %}
+    {% endfor %}
+    <tr><th scope="row">SAN (DNS)</th><td>{% if details.sans.dns %}{{ details.sans.dns | join(', ') }}{% else %}none{% endif %}</td></tr>
+    <tr><th scope="row">SAN (IP)</th><td>{% if details.sans.ips %}{{ details.sans.ips | join(', ') }}{% else %}none{% endif %}</td></tr>
+    <tr><th scope="row">Public key</th><td>{{ details.key_label }}</td></tr>
+    <tr><th scope="row">Signature</th><td>{{ details.signature_algorithm }} / {{ details.signature_hash }}</td></tr>
+  </table>
+
+  {% if details.sans.empty %}
+  <p class="warning">This request carries no SANs. A <em>server</em> or <em>both</em> certificate requires at least one;
+  issue it as <em>client</em> if that is what you meant.</p>
+  {% endif %}
+
+  {# page-map §3 rule 6, PLAN.md §6.3: the extension list this panel was always supposed to show, now reachable because
+     a non-SAN extension that asks for no CA power survives step 6 instead of aborting it. The names come from
+     `CsrDetails.ignored_extensions`, which app.py derives from the parsed request at BOTH steps — nothing here is read
+     out of the submitted form, so this list cannot be talked into naming something the request does not carry.
+     Autoescape (pinned on in app.py) is what makes rendering these names safe, and this block adds no per-expression
+     escape opt-out — `test_consent.py` asserts that against this file rather than trusting it. The strings themselves
+     come from extension types plus OID names, never from free text in the request. #}
+  {% if details.ignored_extensions %}
+  <div class="provenance dropped-extensions">
+    <h3>Not copied from your request &mdash; mypki sets these itself</h3>
+    <ul>
+      {% for name in details.ignored_extensions %}<li><code>{{ name }}</code></li>{% endfor %}
+    </ul>
+    <p class="note">
+      Your request still carries them: nothing has been removed from the PEM you pasted, because a CSR signature covers
+      its own extensions and rewriting it would sign something other than what was validated. &ldquo;Not copied&rdquo;
+      means the certificate below will carry mypki's profile instead of these.
+    </p>
+  </div>
+  {% endif %}
+
+  {# `?pending=` carries the staged request's id. A browser submits the action URL's query string with the POST, so an
+     edited-and-rejected confirmation page does not depend on the session cookie surviving the round trip (app._staged_pem). #}
+  <form method="post" action="/csr/sign{% if pending_id %}?pending={{ pending_id }}{% endif %}" class="stacked">
+    {{ csrf_field(request) | safe }}
+    <input type="hidden" name="confirm" value="1">
+
+    <fieldset>
+      <legend>Names on the certificate (editable &mdash; prefilled from your request)</legend>
+      <div class="grid">
+        <div><label for="c_common_name">Common name</label>
+             <input id="c_common_name" name="common_name" maxlength="253" required
+                    value="{{ request_values.get('common_name', details.subject.get('common_name') or '') }}"></div>
+        <div><label for="c_organization">Organization</label>
+             <input id="c_organization" name="organization" maxlength="128"
+                    value="{{ request_values.get('organization', details.subject.get('organization') or '') }}"></div>
+        <div><label for="c_organizational_unit">Organizational unit</label>
+             <input id="c_organizational_unit" name="organizational_unit" maxlength="128"
+                    value="{{ request_values.get('organizational_unit', details.subject.get('organizational_unit') or '') }}"></div>
+        <div><label for="c_country">Country (two letters)</label>
+             <input id="c_country" name="country" maxlength="2" size="3"
+                    value="{{ request_values.get('country', details.subject.get('country') or '') }}"></div>
+        <div><label for="c_state">State</label>
+             <input id="c_state" name="state" maxlength="128"
+                    value="{{ request_values.get('state', details.subject.get('state') or '') }}"></div>
+        <div><label for="c_locality">Locality</label>
+             <input id="c_locality" name="locality" maxlength="128"
+                    value="{{ request_values.get('locality', details.subject.get('locality') or '') }}"></div>
+        <div><label for="c_email">Email</label>
+             <input id="c_email" name="email" type="email" maxlength="254"
+                    value="{{ request_values.get('email', details.subject.get('email') or '') }}"></div>
+      </div>
+
+      <label for="c_sans">Subject Alternative Names (one per line, or comma-separated)</label>
+      <textarea id="c_sans" name="sans" rows="5">{{ request_values.get('sans', '') or (details.sans.all_entries() | join('\n')) }}</textarea>
+      <p class="hint">Up to {{ max_sans }} entries (<code>MYPKI_MAX_SANS</code>). These are the names a client matches against.</p>
+
+      <p class="note">
+        Editing is allowed because an edit here is <strong>visible</strong>: these boxes start as exactly what your request
+        said, and anything you change is named back to you on the issued page. The public key still comes from your request
+        alone &mdash; no field on this form can change it, and none can set an extension.
+      </p>
+    </fieldset>
+
+    {# Consent for the list above (page-map §3 rule 6). Rendered only when there is something to consent about, so a CSR
+       mypki generated itself shows no box at all. Default OFF is not a CSS default: an unticked checkbox submits nothing
+       at all, and `app._consent_given` treats absence as refusal (PLAN.md §6.3: "an edit is allowed only when it was made
+       visibly", applied to a deletion the operator cannot undo — there is no un-revoke, and from 0.7.0 the published CRL
+       only helps clients that consult it). #}
+    {% if details.ignored_extensions %}
+    <fieldset class="consent">
+      <legend>Dropped extensions &mdash; your decision</legend>
+      <label class="checkbox-line" data-mypki-state-field>
+        <input type="checkbox" name="{{ consent_field }}" value="true"{% if consent_checked %} checked{% endif %} data-mypki-state-toggle>
+        <span class="checkbox-state {{ 'state-on' if consent_checked else 'state-off' }}">{{ 'on' if consent_checked else 'off' }}</span>
+      </label>
+      <p class="hint">
+        Tick this to issue the certificate with {{ details.ignored_extensions | join(', ') }} dropped. Left unticked,
+        nothing is signed and this page comes back asking again. The alternative is to regenerate your request without
+        those extensions.
+      </p>
+    </fieldset>
+    {% endif %}
+
+    <fieldset>
+      <legend>Certificate profile</legend>
+      {% for option in cert_types %}
+      <label class="radio">
+        <input type="radio" name="cert_type" value="{{ option }}"{% if option == selected_profile %} checked{% endif %}>
+        <span>{{ option }}</span>
+      </label>
+      {# Rendered for every profile, not toggled by a click: this app ships no JavaScript (page-map §0), so help text that
+         appeared only on selection would never appear at all. #}
+      <p class="profile-help">{{ cert_profile_help.get(option) }}</p>
+      {% endfor %}
+
+      <div class="provenance">
+        <div>
+          <h3>Copied from your request</h3>
+          <ul>
+            <li>The public key &mdash; always, and only, from the CSR</li>
+            <li>The subject (CN/O/OU/C/ST/L/email) &mdash; as edited above, or as the request states it if you change nothing</li>
+            <li>The SAN names &mdash; same</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Set by mypki, never from the request</h3>
+          <ul>
+            <li>BasicConstraints <code>CA:FALSE</code>, KeyUsage, ExtendedKeyUsage (the profile above)</li>
+            <li>Subject Key Identifier and Authority Key Identifier</li>
+            <li>Issuer name, serial number, validity dates, signature hash</li>
+            {# The sentence this list used to end at, made true: if the request carried any of the names above, they are
+               not copied either &mdash; and rule 6 now says so on this page rather than refusing for it. #}
+            {% if details.ignored_extensions %}<li>Anything your request asked for in these fields is <strong>not</strong> read at all &mdash; see the consent box below</li>{% endif %}
+          </ul>
+        </div>
+      </div>
+    </fieldset>
+
+    <label for="validity_days">Validity in days (1&ndash;{{ max_validity }}, default {{ default_validity }})</label>
+    <input id="validity_days" name="validity_days" type="number" min="1" max="{{ max_validity }}"
+           value="{{ request_values.get('validity_days', default_validity) }}">
+    <p class="hint">
+      Revocations are <em>recorded</em> on this host and, from 0.7.0, published in a CRL and answered over OCSP
+      (<a href="/crl">/crl</a>) — but only clients that consult either see the decision, so a long-lived certificate can
+      stay trusted by clients until it expires. Over {{ max_validity }} days is refused naming the limit, never clamped
+      (<code>MYPKI_VALIDITY_MAX_DAYS</code>).
+    </p>
+
+    <button type="submit">Confirm and issue</button>
+  </form>
+</section>
+{% endif %}
+
+{% if issued %}
+<section class="card once">
+  <h2>Issued: {{ issued.common_name }}</h2>
+
+  {% if changed_from_request %}
+  {# page-map §3 step B: the page must mark anything that differs from the request. An edit nobody noticed is a
+     mis-issuance, and walking it back needs a client that consults the published CRL or OCSP — which pre-0.7 certificates
+     give no pointer to — so this block is still the price of the editable form. #}
+  <div class="diff">
+    <h2>Changed from your request</h2>
+    <dl>
+      {% for label, value in changed_from_request %}
+      <dt>{{ label }}</dt><dd>{{ value }}</dd>
+      {% endfor %}
+    </dl>
+    {# The same block now carries both kinds of difference: a name you edited, and an extension mypki did not copy
+       (page-map §3, PLAN.md §6.3). The closing sentence has to survive the second kind arriving, because it is asserted
+       verbatim in tests/test_views.py and it is the one line that says the certificate's extensions are never somebody
+       else's. #}
+    <p class="note">The public key and every extension still came from mypki, not from your edits.</p>
+  </div>
+  {% endif %}
+
+  <table class="facts">
+    <tr><th scope="row">Serial (hex)</th><td class="mono">{{ issued.serial_hex }}</td></tr>
+    <tr><th scope="row">Type</th><td>{{ issued.cert_type }}</td></tr>
+    {# `subject_display` is assembled in app.py (`_issued_view`) from the **finished certificate's** subject, not from the
+       form or the request: those are the two things that may have differed, and this row has to describe the artifact an
+       operator is about to install. #}
+    <tr><th scope="row">Subject</th><td>{{ issued.subject_display }}</td></tr>
+    <tr><th scope="row">SANs</th><td>{{ issued.sans | join(', ') or 'none' }}</td></tr>
+    <tr><th scope="row">Not before (UTC)</th><td>{{ issued.not_before_utc.strftime('%Y-%m-%d %H:%M:%S') }}Z</td></tr>
+    <tr><th scope="row">Not after (UTC)</th><td>{{ issued.not_after_utc.strftime('%Y-%m-%d %H:%M:%S') }}Z</td></tr>
+    <tr><th scope="row">SHA-256 fingerprint</th><td class="mono wrap">{{ issued.fingerprint_display }}</td></tr>
+  </table>
+
+  <h3>Certificate</h3>
+  <pre class="pem" id="pem-cert">{{ issued.pem }}</pre>
+  <p class="copy-row">
+    <a class="button" href="{{ issued.cert_download }}">Download certificate (.crt)</a>
+    <button type="button" class="copy-pem" data-mypki-copy="pem-cert" data-mypki-label="The certificate">Copy certificate</button>
+  </p>
+
+  <h3>Chain (leaf then CA)</h3>
+  <pre class="pem" id="pem-chain">{{ issued.chain_pem }}</pre>
+  <p class="copy-row">
+    <a class="button" href="{{ issued.chain_download }}">Download chain (.pem)</a>
+    <button type="button" class="copy-pem" data-mypki-copy="pem-chain" data-mypki-label="The chain">Copy chain</button>
+  </p>
+
+  <p class="note">
+    The record is listed on <a href="/issued">Issued certificates</a>, where it can be marked revoked. To make this
+    certificate trusted, install the root from the <a href="/ca">CA certificate</a> page. Marking a record revoked stamps
+    the row and re-signs <a href="/crl">the published CRL</a>, which also answers OCSP — but a client only acts on that if
+    it knows to ask, and a leaf issued before 0.7.0 carries no pointer to either, so such a client keeps trusting this
+    certificate until it expires.
+  </p>
+</section>
+{% endif %}
+{% endblock %}

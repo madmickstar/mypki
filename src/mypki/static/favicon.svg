@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The logo glyph alone, on a 64x64 grid, so a browser rendering this at 16x16 shows the seal and keyhole rather than an
+     illegible wordmark. Same shapes as static/logo.svg by design: one mark, two sizes, nothing to keep in sync (page-map §12).
+
+     An SVG served as `image/svg+xml` is parsed as XML, and XML forbids a double hyphen inside a comment. That rule is why
+     every dash in this file is a single hyphen or a word: MEASURED, the previous version of this file carried a doubled
+     hyphen inside its own comment (before the words "default src self") and every browser showed a broken image while
+     `curl` still answered 200 with the right Content-Type. A 200 is not the same thing as an image that renders.
+
+     No script, no external references, no fonts: `default-src 'self'` applies to what a favicon may pull in too. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="myPKI">
+  <title>myPKI</title>
+  <rect x="4" y="4" width="56" height="56" rx="12" fill="#12161d" stroke="#34d399" stroke-width="2.5"/>
+  <!-- Seal ring: the "certifies" half of the mark. -->
+  <circle cx="32" cy="32" r="19" fill="none" stroke="#4f9bd9" stroke-width="2"/>
+  <!-- Keyhole: a circle over a tapered slot, both cut in the page's near black so it reads as an absence rather than a
+       shape sitting on top. -->
+  <circle cx="32" cy="28" r="6.5" fill="#0b0e13"/>
+  <path d="M27 33 L37 33 L39.5 46 L24.5 46 Z" fill="#0b0e13"/>
+  <!-- One link of the chain on the ring, so the mark is not a perfect circle at a glance: this is a chain of trust, and a
+       perfectly symmetric logo would read as a padlock, which is a different promise. -->
+  <circle cx="32" cy="13" r="3.5" fill="#34d399"/>
+</svg>

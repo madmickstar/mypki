@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Error {{ status }}{% endblock %}
+{% block content %}
+{# page-map §0: mypki's own error page, never a bare JSON detail and never an HTML traceback. The reason is the body of
+   this page rather than a log line, because the operator running this on a Windows box does not have the server log open. #}
+<section class="card error">
+  <h1>{{ status }}</h1>
+  <p class="reason">{{ reason }}</p>
+  {% if hint %}<p class="hint">{{ hint }}</p>{% endif %}
+  <nav class="recovery">
+    <a href="/">Home</a>
+    <a href="/csr/generate">Generate a CSR</a>
+    <a href="/csr/sign">Sign a certificate</a>
+    <a href="/issued">Issued certificates</a>
+  </nav>
+</section>
+{% endblock %}

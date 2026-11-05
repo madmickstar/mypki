@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}About this CA{% endblock %}
+{% block content %}
+
+{% if version_banner %}<p class="banner">{{ version_banner }}</p>{% endif %}
+
+<h1>About myPKI</h1>
+
+{# 0.5.0: this card now sits at the top of the page, above the lede and the profile hero. It is the card that
+   answers "which build is this, on which port, with which limits" -- the facts an operator has to have in hand before
+   anything else on this page means anything, and the two they are told to quote in a problem report (version and
+   source URL). Nothing here is new: same rows, same context keys from the `/about` route, one position change.
+#}
+<section class="card">
+  <h2>What this host is running</h2>
+  <table class="facts">
+    <tr><th scope="row">mypki version</th><td class="mono">{{ version or mypki_version }}</td></tr>
+    <tr><th scope="row">Source</th><td><a href="{{ project_url }}">{{ project_url }}</a></td></tr>
+    <tr><th scope="row">Listening on</th><td class="mono">{{ host }}:{{ port }}{% if tls_enabled %} (TLS){% else %} (plain HTTP){% endif %}</td></tr>
+    <tr><th scope="row">Issued records</th><td>{{ issued_count }} on this host's record store</td></tr>
+    <tr><th scope="row">Marked revoked</th><td>{{ revoked_count }}</td></tr>
+    <tr><th scope="row">Leaf validity</th><td>default {{ validity_default }} days, up to {{ max_validity }} days (<code>MYPKI_VALIDITY_MAX_DAYS</code>)</td></tr>
+    <tr><th scope="row">SAN limit</th><td>{{ max_sans }} entries per certificate (<code>MYPKI_MAX_SANS</code>)</td></tr>
+  </table>
+  <p class="note">
+    A version number plus a source URL is what makes a problem reportable: quote both when you ask why this CA behaved a
+    certain way. Every limit above is also on <a href="/settings">Settings</a>, with where its value came from.
+  </p>
+</section>
+
+
+<p class="lede">
+One root certificate authority on this host. Generate or paste a certificate signing request, have it signed as a
+<em>server</em>, <em>client</em> or <em>both</em> certificate, and install the root where it needs to be trusted. There is no
+login, no API and no JavaScript a page depends on &mdash; every page here is server-rendered HTML, one stylesheet and
+one same-origin script that no page requires. It adds copy buttons, a select-all box and a confirmation dialog; blocked or
+absent, every page on this host still works.
+</p>
+
+{% if no_ca_notice %}
+<p class="notice">{{ no_ca_notice }}</p>
+{% endif %}
+
+<section class="card hero">
+  <h2>What the three profiles mean</h2>
+  {# Rendered from `signing.CERT_PROFILE_HELP`, next to the profiles it describes, so a profile cannot exist on this page
+     without an explanation of what it will not do (page-map §7). #}
+  <dl class="plain">
+    <dt>server</dt><dd>{{ cert_profile_help.get('server') }}</dd>
+    <dt>client</dt><dd>{{ cert_profile_help.get('client') }}</dd>
+    <dt>both</dt><dd>{{ cert_profile_help.get('both') }}</dd>
+  </dl>
+</section>
+
+<section class="card">
+  <h2>What this CA does not do (yet)</h2>
+  <ul>
+    <li><strong>Revocation reaches only clients that go looking for it.</strong> From 0.7.0 this host signs a CRL and
+      answers OCSP (<a href="/crl">/crl</a>), and revocations are recorded on <a href="/issued">Issued</a> with a Status
+      column. What has not changed is the client side: certificates issued before 0.7.0 carry no pointer to either, and
+      openssl does not fetch one even when it is baked in. For those certificates a revoke still means "this host says no"
+      rather than "no client will accept it", so treat long validity periods as a decision you have to live with.</li>
+    <li><strong>No accounts, no logins.</strong> Anyone who can reach this port can ask it to sign. Binding and TLS are the
+      access control (see <a href="/settings">Settings</a> for where this process is listening).</li>
+    <li><strong>No delete.</strong> A record is evidence of what this CA signed; revoking stamps it, deleting would make a
+      valid certificate look never-issued.</li>
+    <li><strong>No API.</strong> There is no JSON endpoint, no <code>/docs</code>, and no OpenAPI document — the knobs that
+      would enable them are hard-coded off in the app factory.</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>The pages</h2>
+  <dl class="plain">
+    <dt><a href="/csr/sign">Sign a certificate</a></dt>
+    <dd>Paste a request from anywhere. Mypki validates it, shows what it actually asks for, then issues a leaf certificate.
+      A request that asks for CA powers is refused on that page, above the box it was pasted into.</dd>
+    <dt><a href="/csr/generate">Generate a key + CSR</a></dt>
+    <dd>Mypki creates a private key and the matching request, shows both once, and stores nothing.</dd>
+    <dt><a href="/ca">Download the CA certificate</a></dt>
+    <dd>The root as <code>mypki-root-ca.crt</code>, with Windows, macOS, Linux and Java install instructions.</dd>
+    <dt><a href="/issued">Issued certificates</a></dt>
+    <dd>List plus Status column and the revoke control. No detail page, no search, no delete.</dd>
+    <dt><a href="/settings">Settings</a></dt>
+    <dd>Every knob this process resolved, its value, where it came from and what changing it costs.</dd>
+  </dl>
+</section>
+{% endblock %}

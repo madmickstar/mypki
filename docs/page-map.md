@@ -885,4 +885,3 @@ exposure is stated instead of being half-mitigated by something nobody measured.
 **Why DER, when mypki emits PEM everywhere else:** because the client at this URL is a library following RFC 6960 §4.1, not a human pasting a
 block into a form. `/crl.pem` stays PEM-only (§14) and there is deliberately no `/crl.der`: two DER spellings of one artifact would be the
 drift case §1 exists to prevent.
-

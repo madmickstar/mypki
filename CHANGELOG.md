@@ -87,8 +87,8 @@ and this heading is what makes that legal: the rule is that the number and the s
 `tools/check_version.py` reads a release rather than drift. Its measured evidence landed in one further pass, at the cut: the
 *Release evidence* subsection at the end of this section records the gates, the suite and the packaging checks this release was
 made against, and the two harness runs are recorded in _docs/measurement-history.md_ under
-*0.7.1 release evidence* — with their counts carried by [`reports/harness-ledger.md`](reports/harness-ledger.md) rather than by
-anything written here.
+*0.7.1 release evidence* — with their counts carried by `reports/harness-ledger.md` (since deleted; the harness writes
+`reports/harness-ledger.json` itself now) rather than by anything written here.
 
 ### Added
 
@@ -197,8 +197,8 @@ anything written here.
 - **The harness total moved against 0.7.0's ledger, MEASURED rather than predicted** (an earlier draft of this bullet named a
   number and was wrong by one: §1 gained an assertion too). Both harnesses exited 0 on 2026-11-03, each against its own freshly
   minted data dir (`/tmp/pkismoke-071sh` for the `.sh`, `/tmp/pkismoke-071ps1` for the `.ps1` under `/tmp/pwsh/pwsh` 7.6.9), and
-  their ledgers agree section by section; the totals, per-section counts and heading positions live in
-  [`reports/harness-ledger.md`](reports/harness-ledger.md), which is what `tools/check_docs.py` sends a reader to rather than a
+  their ledgers agree section by section; the totals, per-section counts and heading positions lived in
+  `reports/harness-ledger.md` (since deleted), which is what `tools/check_docs.py` sent a reader to rather than a
   copy of it here — no count from either harness is quoted in this file. What the new assertions check: the
   `.form-errors.refused` block being present, its refusal paragraph preceding *Paste a CSR (PEM)* in document order (the same
   ORDER fact the `.sh` checks by line and the `.ps1` by string offset), the rejected paste being echoed back into its own

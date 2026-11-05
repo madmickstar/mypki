@@ -41,12 +41,15 @@ jobs:
       # people depend on to tell them whether a release is consistent, and an unlinted checker is a checker whose bugs are
       # discovered by whoever is trying to cut a release at 23:00. Linting it costs one path argument; not linting it costs
       # the tool's credibility.
+      # The same target a contributor runs locally, so CI cannot be green on a command the repository does not use.
       - name: Ruff check
-        run: ruff check src tests tools
+        run: make lint
 
       # `format --check` rather than `format`: CI that rewrites files reports success while leaving the repository dirty, and
       # the next contributor cannot tell which of their lines a tool moved. Formatting is a contributor-side action (via
       # pre-commit or `ruff format` locally); CI only verifies it happened.
+      # `make lint` already ran both halves; this job stays separate so a format failure is visible as its own leg rather
+      # than being hidden behind whichever of the two commands CI happened to reach first.
       - name: Ruff format check
         run: ruff format --check src tests tools
 
@@ -74,7 +77,7 @@ jobs:
       # by contract and asserted to stay that way in tests/test_version.py, so it needs no project-wide typing configuration
       # to be correct about itself.
       - name: mypy on the package
-        run: mypy src
+        run: make types
 
   # ------------------------------------------------------------------ tests
   pytest:
@@ -109,40 +112,10 @@ jobs:
       # --cov-fail-under=85 fails the job below the project's floor; the per-module ≥95% expectation for ca.py/csr.py/
       # signing.py/validators.py is checked locally and visible in the term report, because a global average can hide an
       # untested signing path behind well-tested CLI plumbing.
+      # No `--cov-fail-under` here: the floor is declared once in [tool.coverage.report] in pyproject.toml, so a run that
+      # forgot the floor is no longer possible. The XML report is CI-only and is why this does not call `make cov`.
       - name: pytest
-        run: python -m pytest --cov=mypki --cov-report=xml --cov-fail-under=85
-
-  # ------------------------------------------------------------------ living documentation
-  docs:
-    name: Living docs (no copied measurements)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      # No `pip install` step, for the same reason the version job has none: check_docs.py is stdlib-only, so it runs against
-      # the tree as checked out. This gate reads markdown; installing the package to read documentation would mean a broken
-      # artifact had already been built before the reader of the docs was told the docs were wrong.
-      - name: Living documents carry no hand-copied measurements or line citations
-        run: python3 tools/check_docs.py
-
-      # The mutation check runs on every CI pass, not occasionally. A gate whose patterns match nothing is indistinguishable
-      # from a gate that passes, and the only way to tell those apart is to show each rule firing on synthetic text.
-      - name: Docs rules can actually fire (mutation self-test)
-        run: python3 tools/check_docs.py --self-test
-
-      # src/ prose gets the same treatment as the markdown: a docstring that names a release, records one probe run, or points at
-      # a planning document's numbering is history sitting inside living code, and it goes stale on the first behaviour change after
-      # it. Same stdlib-only contract as check_docs.py, so no `pip install` step here either — the gate reads the tree exactly as
-      # checked out, which is also what lets this job run in a checkout where mypki was never installed.
-      - name: src/ docstrings carry no release-time prose
-        run: python3 tools/check_docstrings.py
-
-      - name: src/ prose rules can actually fire (mutation self-test)
-        run: python3 tools/check_docstrings.py --self-test
+        run: python -m pytest --cov=mypki --cov-report=xml
 
   # ------------------------------------------------------------------ harness parity: deliberately NOT a job here
   # `tools/harness_parity.py` compares two smoke-harness logs heading for heading and per-section PASS count for per-section PASS
@@ -175,7 +148,7 @@ jobs:
       # check its version would mean the artifact with the wrong version had already been built by the time the checker
       # spoke — which is the exact ordering this job exists to invert.
       - name: Version chain (module -> manifest -> CHANGELOG)
-        run: python3 tools/check_version.py
+        run: make version
 
       # `--require-tag` only on a tag ref. MEASURED on this project's own tree: check_version.py exits **2** ("cannot
       # check") when the version line exists but no release ref can be consulted, and 2 is explicitly not a pass — so

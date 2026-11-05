@@ -196,8 +196,8 @@ CRL_FILENAME = "mypki.crl.pem"
 #: This file's *name* for where a refusal is rendered, as distinct from the status code it carries — the rule spelled
 #: out in the module docstring above. Living code cites `ERROR_SURFACE_RULE` instead of quoting that sentence, so
 #: rewording it touches this file alone rather than the tests, three templates and two documents at once.
-#: The quoted phrase itself stays in the docstring heading, because frozen history under `docs/history/` records
-#: it there; `tests/test_packaging.py` pins both ends — one heading here, no quotation anywhere else in living code.
+#: The quoted phrase itself stays in the docstring heading as the thing being named. `tests/test_packaging.py` pins both
+#: ends — exactly one heading here, and no quotation of it anywhere else in living code.
 ERROR_SURFACE_RULE = "Two error surfaces instead of one"
 
 __all__ = ["OneShotArtifact", "OneShotStore", "SecurityHeadersMiddleware", "SizeGuardMiddleware", "create_app"]

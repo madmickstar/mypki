@@ -56,51 +56,8 @@ repos:
         files: ^(src/mypki/__init__\.py|pyproject\.toml|CHANGELOG\.md)$
         pass_filenames: false
 
-      # The docs gate is where a small code edit used to turn into a documentation sweep: prose that copied a harness total
-      # or cited `app.py:609` went stale on the first unrelated edit above it, and nothing said so until a reader tripped over
-      # it. Running it here means the sentence fails while the author still has the change in front of them.
-      # `files:` scopes it to the documents it polices, so a commit that touches only Python does not re-read 900 lines of
-      # markdown; `require_serial` is unnecessary because the gate reads whole files rather than mutating anything.
-      - id: check-docs-hygiene
-        name: living docs free of copied measurements and line citations
-        entry: python3 tools/check_docs.py
-        language: system
-        files: ^(README\.md|SMOKE_TESTING\.md|CHANGELOG\.md|docs/.*\.md)$
-        exclude: ^docs/(history/.*\.md|measurement-history\.md)$
-        pass_filenames: false
-
-      # The gate's own mutation check, cheap enough to run every commit. If a rule is edited into one that matches nothing,
-      # this hook reports it immediately instead of leaving a permanently green gate behind.
-      - id: check-docs-self-test
-        name: docs rules can actually fire (mutation self-test)
-        entry: python3 tools/check_docs.py --self-test
-        language: system
-        files: ^(tools/check_docs\.py|README\.md|SMOKE_TESTING\.md|CHANGELOG\.md|docs/.*\.md)$
-        pass_filenames: false
-
-      # The src/ half of the same idea: docstrings and full-line comments under src/ may not name a release, record how one probe
-      # run went, or point at a planning document's numbering. Those are release-time facts, docs/history/ is where they belong, and
-      # a docstring that carries them drags every later edit into renegotiating a sentence the code no longer means. `files:` scopes
-      # the hook to what it reads, so a commit touching only markdown does not re-scan the package.
-      - id: check-docstrings-hygiene
-        name: src/ docstrings and comments free of release-time prose
-        entry: python3 tools/check_docstrings.py
-        language: system
-        files: ^src/mypki/.*\.py$
-        pass_filenames: false
-
-      # And its mutation check, for the same reason the docs one is here: a rule edited into one that matches nothing is a gate that
-      # passes forever, and the cheapest moment to discover that is the commit that did it.
-      - id: check-docstrings-self-test
-        name: src/ prose rules can actually fire (mutation self-test)
-        entry: python3 tools/check_docstrings.py --self-test
-        language: system
-        files: ^(tools/check_docstrings\.py|src/mypki/.*\.py)$
-        pass_filenames: false
-
-      # `tools/harness_parity.py` is deliberately absent from this file. It compares two smoke-harness logs — heading for heading,
-      # per-section PASS count for per-section PASS count — so it needs exactly one log from each harness implementation, and given
-      # fewer than two usable logs it exits 2, which this project reads as "could not check" rather than as a pass. A commit supplies
-      # neither log, and making a commit produce them would put two full harness runs in front of every commit for a question that only
-      # has an answer once both harnesses have been driven against the same build. It is a release-time comparison run alongside
-      # tools/harness_ledger.py, not a hook: see docs/CHANGE_POLICY.md.
+      # `tools/harness_parity.py` is deliberately absent from this file. It compares two smoke-harness logs — heading for
+      # heading, per-section PASS count for per-section PASS count — so it needs exactly one log from each harness
+      # implementation, and given fewer than two usable logs it exits 2, which this project reads as "could not check"
+      # rather than as a pass. A commit supplies neither log. It is a release-time comparison run alongside
+      # tools/harness_ledger.py, not a hook.

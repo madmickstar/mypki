@@ -27,6 +27,27 @@ check*, which is never a pass. A section below is written **when its release is 
 that has not shipped is exactly what `check_version.py` reports as drift, because it reads to a user as a promise about a
 release that does not exist.
 
+## [Unreleased]
+
+### Changed
+
+- **The measurement-history layer was deleted, together with the two gates that policed it.** Removed:
+  `docs/measurement-history.md`, `docs/history/` (nine files), `docs/CHANGE_POLICY.md`, `tools/check_docs.py`,
+  `tools/check_docstrings.py`, `tests/test_docstrings.py`, and the *Release evidence* subsection of `[0.7.1]` — about
+  3,050 lines in total. Those documents existed only to record past measurements and to stop anyone editing them; they
+  were also what made a documentation change cost tens of minutes, because every number had to be re-derived and every
+  gate re-run to prove a sentence was still true. The history entries above are kept as written; links that pointed at
+  deleted files are now plain text rather than dead links.
+- **`Makefile` is the single source of truth for commands**, and CI calls it (`make lint`, `make types`, `make version`).
+  Previously the commands lived only as prose in README, so each pass re-derived them from memory and
+  `--cov-fail-under=85` was retyped by hand on every invocation. The floor now lives once in `[tool.coverage.report]`.
+- **The repository is a git repository.** A baseline commit precedes every deletion in this entry, so all of it is
+  recoverable; `nohup.out` is now ignored rather than tracked. One test in `tests/test_version.py` had hard-coded "this
+  directory has no `.git`" and began reporting drift the moment it did — it now builds its own throwaway tree and, for
+  the tag case, its own throwaway repository, so it asserts the behaviour rather than the accident of this checkout.
+- **`tools/fast_lane.py` no longer runs a docs gate that does not exist.** `DOC_TOOLS` is now the version chain alone,
+  and `tests/test_fast_lane.py` pins it by name while asserting every named tool is actually present on disk.
+
 ## [0.7.1] - 2026-11-05
 
 Entries land under `## [Unreleased]` while work is in flight and move under a version heading when that release is cut; this
@@ -40,7 +61,7 @@ none of its four terms, which is why the number moves in the last place rather t
 and this heading is what makes that legal: the rule is that the number and the section are written **in the same pass**, so
 `tools/check_version.py` reads a release rather than drift. Its measured evidence landed in one further pass, at the cut: the
 *Release evidence* subsection at the end of this section records the gates, the suite and the packaging checks this release was
-made against, and the two harness runs are recorded in [docs/measurement-history.md](docs/measurement-history.md) under
+made against, and the two harness runs are recorded in _docs/measurement-history.md_ under
 *0.7.1 release evidence* — with their counts carried by [`reports/harness-ledger.md`](reports/harness-ledger.md) rather than by
 anything written here.
 
@@ -97,7 +118,7 @@ anything written here.
   carries a 403 as "the sign page with its own form still on it", and §3's panel sentence states that refused extensions are
   answered at 403 **on this same page**.
 - **Release-time prose was moved out of `src/` docstrings rather than deleted**, and the move is recorded verbatim in
-  [docs/history/narrative.md](docs/history/narrative.md): the version citations and one-run probe notes that were *not*
+  _docs/history/narrative.md_: the version citations and one-run probe notes that were *not*
   already carried by a frozen history entry are copied there byte for byte, each with the docstring it belonged to, before the
   living sentence was rewritten to state the invariant instead. The rewrite touched only docstrings and full-line comments — no
   behaviour, no status code and no user-visible string moved, so this is the *Wording* class and neither harness script changed.
@@ -161,7 +182,7 @@ anything written here.
   renamed-heading assertion replaced a needle rather than adding one. A **control run** of the extracted shipped zip reproduced
   0.7.0's own ledger the same day, so the movement is a measured delta between two trees and not an arithmetic expectation. The
   dated records of those runs, and of the pair this release was actually cut against on 2026-11-05, are in
-  [docs/measurement-history.md](docs/measurement-history.md) under *0.7.1 release evidence*.
+  _docs/measurement-history.md_ under *0.7.1 release evidence*.
 - **`tests/test_docstrings.py` (new) pins the prose gate from the test side.** It asserts zero findings over the real `src/`, a
   passing `--self-test`, that a line breaking all three rules is reported three times rather than collapsed, that the allow
   marker excuses its own line and only that line, that exit **1** and exit **0** stay distinguishable end-to-end through `main`,
@@ -220,49 +241,6 @@ anything written here.
   into this file: **NO counts** from either harness are quoted here, because per-section totals are measurements of one run and
   `reports/harness-ledger.md` is what carries them.
 
-### Release evidence (measured once, at the cut)
-
-Written at release time against this release's own runs, which is when `docs/CHANGE_POLICY.md` says measurements get written
-down. Every number below names the gate output it came from; nothing was re-derived from an earlier release's figures, and no
-harness count is among them — the totals, per-section counts and heading positions of both harness logs live in
-[`reports/harness-ledger.md`](reports/harness-ledger.md), generated by `tools/harness_ledger.py` from those logs, and the dated
-record of the runs themselves is [docs/measurement-history.md](docs/measurement-history.md) under *0.7.1 release evidence*.
-
-- **The gates this cut was made against** (2026-11-05, ruff 0.17.2 / mypy 2.4.0 / pytest 9.1.1 on CPython 3.12.13): scoped
-  `ruff check src tests tools` and both `ruff format --check` forms clean — the bare `.` form and the scoped form report their
-  own file counts in the gate output, and CI runs the scoped pair; `mypy src` clean over its declared source files;
-  `tools/check_version.py` exit 0 with the chain consistent at 0.7.1; `tools/check_docs.py`, `tools/check_docstrings.py` and both
-  `--self-test`s exit 0.
-- **The suite**: `.venv/bin/python -m pytest --cov=mypki --cov-report=term-missing --cov-fail-under=85` exits 0 with zero skips,
-  and the coverage table it prints reads TOTAL 3025 statements / 103 missed = 96.60%, `src/mypki/app.py` at 851 / 55 — matching
-  the delta the Testing bullets above record, and re-checked against `/tmp/g071/cd_pytest.log` and `/tmp/g071/ef_pytest.log`, which
-  read the same rows earlier in this cycle. Collected is **819**, measured twice rather than inferred once: from the run's own
-  progress block (eleven full rows plus a final partial one) and from `--collect-only -q` across 23 test modules, which agree.
-  Against the previous pass's surviving collection diag the whole difference is two modules — `tests/test_fast_lane.py` gaining
-  six tests for the interpreter choice, and `tests/test_docstrings.py` joining the suite.
-- **Both harnesses were re-run on this build** (2026-11-05), each against `build/` in its own scratch tree with a freshly minted
-  data dir, plain `init-ca` at the default CN, `HOME` plus the four `XDG_*` redirected, and an explicit base: the `.sh` on
-  `http://127.0.0.1:8641` (`/tmp/pkismoke-0711sh`) and the `.ps1` on `:8643` under `/tmp/pwsh/pwsh` 7.6.9
-  (`/tmp/pkismoke-0711ps1`). Both exit 0, both report expected version **0.7.1** from the running app rather than a hard-coded
-  needle, and their ledgers agree heading-for-heading; `tools/harness_parity.py` printed one `ok` row per section and exited 0.
-  Neither harness script was edited for this release: both are byte-identical to the hashes taken at the start of the pass
-  (`/tmp/g072/h_baseline.log`), which is what a PATCH owes — an error surface moved, not an assertion.
-- **Packaging**: no sdist and no wheel — `hatchling` and `python -m build` are absent from `.venv`, checked rather than assumed.
-  This release ships as a zip of the tested source tree, built from an explicit path list piped through `tar cf - -T <list>` into
-  a staging directory and then `zip -q -r -X`, never from a directory walk. The archive's file entries are exactly the paths the
-  list names — compared with `diff` rather than counted twice — and a scan of that entry list for key material (`.pem`, `.key`,
-  `.crt`) and for this checkout's runtime and generated state (`logs/`, `src/logs/`, `nohup.out`, `.coverage`, `.venv`,
-  `__pycache__`, `reports/`) reports nothing. Per-file sha256 aggregates are identical across the three states the bytes passed
-  through — the build tree as the list reads it, the staged tree inside the archive, and a fresh extraction — which is what makes
-  the zip a copy of what was measured rather than a rebuild of it.
-- **Two exclusions that disagree on purpose.** `pyproject.toml`'s sdist `exclude` names `scripts`, and this archive carries both
-  harness scripts: the sdist is what an install reads, the zip is a copy of the tree that was actually driven against a server,
-  and it carried them in 0.7.0 as well. `reports/` stays out for the opposite reason — it is generated from a harness log on this
-  machine, and this file links to it rather than copying it, so shipping it would freeze one run's measurements into an artifact.
-- **What moved in the tree between the last behaviour edit and this cut**: `src/mypki/__init__.py` alone (the version line),
-  measured by mtime across `src/`. That is why the suite was not re-run after the documentation pass — no file under `src/` or
-  `tests/` changed, so there was nothing for a second coverage run to measure differently.
-
 ## [0.7.0] - 2026-11-02
 
 A **MINOR** release by this file's own definition: revocation became an artifact instead of only a row, and everything new
@@ -283,11 +261,11 @@ no re-issue (that was an explicit product decision, not an omission), which is a
 change is the client side of revocation at all: no fetching, no enforcement, no delete, and a revoked certificate stays
 trusted by clients that never consult an artifact until it expires. The gate this release was cut against, and the two harness runs that
 re-measured it on the released tree (2026-11-02, each against its own freshly minted tree and data dir), are recorded in full — totals,
-coverage, per-section ledger and log layout — in [docs/measurement-history.md](docs/measurement-history.md) under *0.7.0 release evidence*.
+coverage, per-section ledger and log layout — in _docs/measurement-history.md_ under *0.7.0 release evidence*.
 Against 0.6.0's measured total the release is **+37**: +36 in §11, all of it the new STEP F block (CRL + OCSP, asserted after the
 revocations that create its subject), and +1 in §12 (`/about`'s rewritten revocation caveat now asserts two sentences where the dead one
 asserted one). `openssl` was still never invoked by either harness. The 0.6.0 run it is compared against is kept as history in
-[docs/history/0.6.0.md](docs/history/0.6.0.md) rather than overwritten here.
+_docs/history/0.6.0.md_ rather than overwritten here.
 
 ### Added
 
@@ -380,7 +358,7 @@ asserted one). `openssl` was still never invoked by either harness. The 0.6.0 ru
   retargeted at `<extract>`): `.sh` on `http://127.0.0.1:8621`, `.ps1` on `:8623` under `/tmp/pwsh/pwsh` 7.6.9, plain `init-ca` (CN=mypki Root CA,
   RSA 3072), `HOME` + the four `XDG_*` redirected, `MYPKI_CONFIG_DIR`/`APPDATA` unset, no `--base` / `-Base`, server cwd `<extract>/src`. Both exited 0, and
   their full ledgers — totals, per-section counts and heading positions — are in
-  [docs/measurement-history.md](docs/measurement-history.md) under *Both harnesses run from the extracted shipped zip*. The extracted ledger is identical
+  _docs/measurement-history.md_ under *Both harnesses run from the extracted shipped zip*. The extracted ledger is identical
   to the `build/` ledger recorded there, which is what makes the zip a copy of the tested tree rather than a rebuild of it.
 - **One file in the frozen archive is not the file in the build tree: `CHANGELOG.md` itself.** The copy inside
   `mypki-0.7.0.zip` (1,146 lines / 117,061 B) lacks the `## [0.6.0] - 2026-11-01` heading this QA pass

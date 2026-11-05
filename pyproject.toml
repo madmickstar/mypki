@@ -83,11 +83,6 @@ packages = ["src/mypki"]
 # artifacts (tracked in git, useless in an install), and no key material may ever ship. tests/test_packaging.py
 # asserts both halves -- what is included, and that no include entry can reach an excluded thing.
 #
-# `docs/history` and `docs/measurement-history.md` joined the list when CHANGELOG.md was split, for the same reason
-# `tools` joined it for `tests`: the shipped `CHANGELOG.md` now says outright that everything below 0.7.0 lives one
-# file per release under `docs/history/`, and its entries link into both files. An artifact carrying the changelog but
-# not the history it points at is a changelog with dead paths in it -- and because every entry here is asserted as an
-# exact set, adding one is a deliberate edit in two places (this list and REQUIRED_INCLUDES) rather than a silent one.
 [tool.hatch.build.targets.sdist]
 include = [
     "src",
@@ -97,8 +92,6 @@ include = [
     "CHANGELOG.md",
     "LICENSE",
     "docs/page-map.md",
-    "docs/history",
-    "docs/measurement-history.md",
 ]
 exclude = ["scripts", "logs", "*.pem", "*.key", "*.crt"]
 
@@ -126,3 +119,12 @@ select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF"]
 python_version = "3.10"
 strict = false
 ignore_missing_imports = true
+
+# The coverage floor lives here rather than being retyped onto a command line each run. `make cov` and CI both get it
+# from this table, so there is one number to change and no invocation that can silently have had no floor at all.
+[tool.coverage.run]
+source = ["mypki"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true

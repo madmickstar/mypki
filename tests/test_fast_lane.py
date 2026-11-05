@@ -34,8 +34,9 @@ import fast_lane
 def test_the_lint_steps_are_only_scoped_ruff() -> None:
     """The two steps every edit pays for are `ruff check` and `ruff format --check`, both scoped.
 
-    Scoped, not `.`: `docs/CHANGE_POLICY.md` states that the scoped form is the gate whose file counts mean anything,
-    and a fast lane that ran a different ruff invocation would produce a result the commit gate cannot be compared to.
+    Scoped, not `.`: the scoped form names only files this project owns, so its counts are comparable between runs. A
+    bare `.` walks generated artifacts too, and a lane that ran a different ruff invocation would produce a result the
+    commit gate cannot be compared to.
     """
     assert fast_lane.LINT_STEPS, "a fast lane with no lint steps is not a fast lane"
 
@@ -49,14 +50,16 @@ def test_the_lint_steps_are_only_scoped_ruff() -> None:
     assert names == ["ruff check", "ruff format --check"], f"unexpected lint steps: {names}"
 
 
-def test_the_doc_gates_are_the_two_tools_by_path() -> None:
-    """`DOC_TOOLS` names the version chain and the docs gate, invoked the way CI invokes them.
+def test_the_doc_gates_are_named_by_path() -> None:
+    """`DOC_TOOLS` names the version chain, invoked the way CI and the pre-commit hooks invoke it.
 
-    The paths matter as much as the pair: `tools/` is not part of the installed package, so `-m tools.check_docs` would
-    be a route the real gates never take, and a lane that passes only on an import route CI does not use is a lane that
+    The path matters as much as the name: `tools/` is not part of the installed package, so a module-import route would
+    be one the real gates never take, and a lane that passes only on an import route CI does not use is a lane that
     hides a broken gate.
     """
-    assert fast_lane.DOC_TOOLS == ("tools/check_version.py", "tools/check_docs.py")
+    assert fast_lane.DOC_TOOLS == ("tools/check_version.py",)
+    for tool in fast_lane.DOC_TOOLS:
+        assert Path(fast_lane.BUILD_ROOT / tool).is_file(), f"{tool} does not exist"
 
 
 def test_the_commit_only_steps_name_everything_the_fast_lane_drops() -> None:
@@ -129,13 +132,13 @@ def test_a_lane_with_no_pattern_runs_gates_but_not_pytest() -> None:
     assert head == [cmd for _, cmd in fast_lane.LINT_STEPS]
 
 
-def test_no_docs_skips_exactly_the_two_named_tools() -> None:
+def test_no_docs_skips_exactly_the_named_tools() -> None:
     """`--no-docs` removes `DOC_TOOLS` and nothing else, so the lint half is never optional."""
     with_docs = fast_lane.build_steps([], include_docs=True)
     without_docs = fast_lane.build_steps([], include_docs=False)
 
     doc_cmds = [cmd for _, cmd in with_docs if any(tool in " ".join(cmd) for tool in fast_lane.DOC_TOOLS)]
-    assert len(doc_cmds) == 2, f"expected one step per DOC_TOOLS entry, saw {doc_cmds}"
+    assert len(doc_cmds) == len(fast_lane.DOC_TOOLS), f"expected one step per DOC_TOOLS entry, saw {doc_cmds}"
     assert all(" ".join(cmd) in fast_lane.DOC_TOOLS for cmd in doc_cmds), doc_cmds
 
     assert [cmd for _, cmd in without_docs] == [cmd for _, cmd in fast_lane.LINT_STEPS]

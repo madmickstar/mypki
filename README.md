@@ -260,43 +260,33 @@ Out of scope by design, stated rather than left to be discovered:
 
 ```bash
 pip install -e ".[dev]"
-ruff check src tests tools && ruff format --check src tests tools
-mypy src
-pytest --cov=mypki --cov-report=term-missing --cov-fail-under=85
-python3 tools/check_version.py          # version chain: 0 consistent, 1 drift, 2 cannot check
-python3 tools/check_docs.py             # living docs: 0 clean, 1 findings
-python3 tools/check_docs.py --self-test # proves each docs rule can actually fire
-python3 tools/check_docstrings.py       # src/ docstrings and comments: 0 clean, 1 findings
-python3 tools/check_docstrings.py --self-test # proves each src/ prose rule can actually fire
+make gate          # lint + types + version chain + full suite with coverage
+make fast K=sign   # while editing: cheap subset, targeted tests only
+make zip           # release artifact (run last — a zip is a copy of what was gated)
 pre-commit run --all-files
 ```
 
-For a single edit, `python3 tools/fast_lane.py KEYWORD` runs the cheap half of that list — scoped ruff, the two living-doc gates and a
-targeted `pytest -k` — and leaves mypy, coverage measurement, the src/ prose gate and both harness scripts to the commit gate, which is
-what it owes either way.
+`Makefile` is the single source of truth for commands. CI calls the same targets, so a command that exists only in CI and
+nowhere else cannot drift into being the one that actually matters. The coverage floor (`fail_under = 85`) is declared once,
+in `[tool.coverage.report]`, rather than retyped onto each invocation.
 
-`tools/check_docstrings.py` polices docstrings and full-line comments under `src/`: a released version named in living code, a note about
-how one probe run went, or a pointer at a planning document's numbering. Those are release-time facts, and `docs/history/` is where they
-belong; the gate makes the split mechanical instead of a review convention.
+`make fast K=KEYWORD` (or `python3 tools/fast_lane.py KEYWORD`) runs the cheap half — scoped ruff, the version chain and a
+targeted `pytest -k` — and leaves mypy, coverage measurement and both harness scripts to the commit gate, which is what it
+owes either way.
 
-`tools/harness_parity.py` is not in that list because it cannot be: it compares two harness logs heading for heading and per-section PASS
-count for per-section PASS count, so it needs one log from each harness and exits 2 when fewer than two usable logs are given. A commit
-supplies neither, so this is a release-time comparison run alongside `tools/harness_ledger.py` after both harnesses have been driven, not a
-commit hook; it exits 1 for any divergence rather than excusing one.
+`tools/harness_parity.py` is not in any gate list because it cannot be: it compares two harness logs heading for heading and
+per-section PASS count for per-section PASS count, so it needs one log from each harness and exits 2 when fewer than two usable
+logs are given. A commit supplies neither, so this is a release-time comparison run alongside `tools/harness_ledger.py` after both
+harnesses have been driven; it exits 1 for any divergence rather than excusing one.
 
 `docs/page-map.md` is the spec and the code cites it as `page-map §N`; if behaviour and that file disagree, fix both
 in the same commit. Tests are hermetic — a fixture points `MYPKI_DATA_DIR` at a temporary directory, so no test ever
-touches your real CA. CI runs lint, mypy, pytest on **ubuntu-latest and windows-latest** across Python 3.10–3.13, the
-version chain, and the documentation gate; the Windows leg is what proves the path handling and that no OpenSSL binary
-is required.
+touches your real CA. CI runs lint, mypy, pytest on **ubuntu-latest and windows-latest** across Python 3.10–3.13 and the
+version chain; the Windows leg is what proves the path handling and that no OpenSSL binary is required.
 
-**What a change has to update** is spelled out in [docs/CHANGE_POLICY.md](docs/CHANGE_POLICY.md): measurements are
-generated, never retyped, and a bug is cited by the name of the test or label that proves it rather than by a line number.
-`tools/check_docs.py` enforces both on `README.md`, `SMOKE_TESTING.md`, `CHANGELOG.md` and `docs/*.md`. Frozen history is
-exempt from it — [docs/history/](docs/history/) holds one append-only file per released version, and
-[docs/measurement-history.md](docs/measurement-history.md) holds dated records of what past runs measured. A harness run's
-totals, per-section counts and log positions are generated into `reports/harness-ledger.md` (gitignored; regenerate it with
-`tools/harness_ledger.py`) and documents link there instead of copying them.
+A harness run's totals, per-section counts and log positions are generated into `reports/harness-ledger.md` (gitignored;
+regenerate it with `tools/harness_ledger.py`) rather than being retyped into a document, because a copied measurement goes stale
+on the first unrelated change and nobody can tell.
 
 Manual walkthrough: [SMOKE_TESTING.md](SMOKE_TESTING.md), automated by
 `scripts/smoke_test.sh` and `scripts/smoke_test.ps1` (both tracked in git, both excluded from the sdist/wheel).

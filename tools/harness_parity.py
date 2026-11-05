@@ -6,7 +6,7 @@ WHY THIS EXISTS
     implementations of one spec, so a run that passes 288 assertions on one side and 287 on the other is not two
     green runs, it is one assertion that only exists in one implementation. Answering that by eye means reading two
     ledgers and diffing per-section counts in your head, which is exactly the kind of measurement a document cannot
-    keep true (see `docs/CHANGE_POLICY.md`).
+    keep true.
 
 WHAT IT COMPARES
     Two things, and only these: the section headings (number **and** title text) and the per-section PASS counts. A

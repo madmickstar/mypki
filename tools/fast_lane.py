@@ -1,24 +1,20 @@
 """The fast lane: the gates worth running on every edit, and only those.
 
 WHY THIS EXISTS
-    `docs/CHANGE_POLICY.md` says a small change should cost 45-90 minutes with documentation capped at ten, and it
-    names a fast lane (`ruff check`, `ruff format --check`, a targeted `pytest -k`). Naming it in prose is how it gets
-    skipped: under time pressure the honest options are "spend four minutes of gates on a CSS edit" or "run nothing".
-    This file makes the cheap option one command, so the fast lane is the default rather than a discipline to remember.
+    A small change should cost minutes, not an hour. Naming the cheap gate set in prose is how it gets skipped: under
+    time pressure the honest options are "spend four minutes of gates on a CSS edit" or "run nothing". This file makes
+    the cheap option one command (`make fast K=...` wraps it), so the fast lane is the default rather than a discipline
+    to remember.
 
 WHAT IT RUNS, AND WHY THOSE
     ruff check + ruff format --check (scoped)   ~0.1 s   the two things an edit breaks most often
     tools/check_version.py                       ~0.1 s   four lines, and the only gate that reads the version chain
-    tools/check_docs.py                          ~0.1 s   the only gate that reads the living documents at all
     pytest -q --no-cov -k PATTERN                1-20 s   the tests for what you actually changed
 
 WHAT IT DELIBERATELY OMITS
-    mypy, coverage, `tools/check_docstrings.py` and both harness scripts. Those belong to a commit or a release, not to
-    an edit: `mypy src` is half
+    mypy, coverage and both harness scripts. Those belong to a commit or a release, not to an edit: `mypy src` is half
     a second but answers a question an unchanged signature did not raise; coverage needs the whole suite to mean
-    anything; `tools/check_docstrings.py` reads every module under `src/`, which an edit to one template did not make
-    a live question; a harness run costs minutes and only earns its cost when a user-visible string or a status code
-    moved.
+    anything; a harness run costs minutes and only earns its cost when a user-visible string or a status code moved.
     The omission is asserted in `tests/test_fast_lane.py`, because "the fast lane is fast" decays the first time
     someone adds a slow step to it for convenience.
 
@@ -30,8 +26,9 @@ ONE FAILURE MODE WORTH NAMING
 A SECOND INVOCATION BUG, AND THE NASTIER ONE
     Run this through an interpreter that does not have mypki installed — the system `python3` of a checkout whose
     virtualenv sits in `.venv/`, for instance — and pytest aborts at conftest with `ModuleNotFoundError: No module
-    named 'mypki'`. Scoped ruff and both doc gates still pass, because they are stdlib-only, so the run comes back
-    half-green with one failure that reads to whoever just edited a stylesheet as "my change broke the suite". It did
+    named 'mypki'`. Scoped ruff and the version-chain gate still pass - they are stdlib-only - so the run
+    comes back half-green with one failure that reads to whoever just edited a stylesheet as "my change broke
+    the suite". It did
     not break anything: no test of the changed behaviour ever ran.
 
     The interpreter is therefore chosen rather than inherited. Every step runs under this checkout's `.venv`
@@ -40,9 +37,9 @@ A SECOND INVOCATION BUG, AND THE NASTIER ONE
     invoking interpreter is used unchanged, and the printed line says that too rather than leaving it assumed.
 
 USAGE
-    python3 tools/fast_lane.py KEYWORD [KEYWORD...]   # lint + version chain + docs + pytest -k KEYWORD
+    python3 tools/fast_lane.py KEYWORD [KEYWORD...]   # lint + version chain + pytest -k KEYWORD
     python3 tools/fast_lane.py --dry-run              # print the plan, run nothing
-    python3 tools/fast_lane.py --no-docs              # skip the two doc gates (docs untouched)
+    python3 tools/fast_lane.py --no-docs              # skip the version-chain gate
 
 Exit codes: 0 all steps passed · 1 a step failed · 2 usage error (no pattern and not --dry-run).
 """
@@ -56,10 +53,10 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
-#: The two living-doc gates, named once so `build_steps` and the test that pins this lane agree on them. Invoked by
-#: path rather than `-m tools.check_docs`: `tools/` is a plain directory, and CI plus the pre-commit hooks already call
-#: these two by path, so the fast lane cannot pass on an import route the real gates do not use.
-DOC_TOOLS: tuple[str, ...] = ("tools/check_version.py", "tools/check_docs.py")
+#: The doc/version gate this lane runs, named once so `build_steps` and the test that pins this lane agree on it.
+#: Invoked by path rather than as a module import: `tools/` is not part of the installed package, and CI plus the
+#: pre-commit hooks already call it by path, so the lane cannot pass on an import route the real gates do not use.
+DOC_TOOLS: tuple[str, ...] = ("tools/check_version.py",)
 
 #: This checkout's virtualenv, named as a directory so the existence test below and the interpreter path built from it
 #: come from one fact. `mypki` is installed here and not system-wide, which is exactly why inheriting `sys.executable`
@@ -78,13 +75,11 @@ LINT_STEPS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 #: Everything this lane refuses to run, spelled out so `--dry-run` can name it and the test that pins the lane can
-#: assert each entry stayed out. `tools/check_docstrings.py` sits here rather than in `DOC_TOOLS`: it is a whole-`src/`
-#: prose read rather than a four-line chain check, and adding it to the doc pair would make the fast lane pay for a
-#: scan of every module on an edit that touched one template.
+#: assert each entry stayed out. Keeping this list honest is the point: if a slow gate vanished from it, the tool would
+#: stop telling anyone that mypy, coverage and the harnesses are still owed at commit.
 COMMIT_ONLY_STEPS: tuple[str, ...] = (
     "mypy src",
     "pytest --cov",
-    "tools/check_docstrings.py",
     "scripts/smoke_test.sh",
     "scripts/smoke_test.ps1",
     "tools/harness_ledger.py",
@@ -202,7 +197,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"FAILED {line}", file=sys.stderr)
         print(
             "the fast lane is the floor, not the whole gate set: mypy, coverage and (when a visible string or status "
-            "code moved) both harness scripts still run before a commit - see docs/CHANGE_POLICY.md",
+            "code moved) both harness scripts still run before a commit - see the Makefile targets",
             file=sys.stderr,
         )
         return 1

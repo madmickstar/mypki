@@ -169,28 +169,65 @@ def test_the_build_tree_itself_is_consistent() -> None:
     assert _exit_code(BUILD_ROOT) == ok != cannot
 
 
-def test_require_tag_on_a_non_repository_is_cannot_check_rather_than_drift() -> None:
-    """The state this build directory is actually in today: a plain tree, no `.git`, no refs.
+def _consistent_tree(root: Path, version: str = "9.9.9") -> None:
+    """A minimal tree whose first four links are consistent, so the only thing a test can vary is the fifth.
 
-    Asserted as **cannot check** (2) and explicitly *not* drift (1). The distinction matters operationally: "no
-    such tag"
-    means a release happened without being tagged and somebody must go tag it, while "this is not a repository"
-    means there
-    are no refs to consult at all. Reporting the first when the truth is the second sends someone to hunt for a
-    missing tag
-    that was never supposed to exist here.
+    Without this, a fixture that omits `[tool.hatch.version]` reports *cannot check* for the wrong reason and the
+    assertion below would pass against a tool that had never looked at git at all.
+    """
+    (root / "src" / "mypki").mkdir(parents=True, exist_ok=True)
+    (root / "src" / "mypki" / "__init__.py").write_text(f'__version__ = "{version}"\n', encoding="utf-8")
+    (root / "pyproject.toml").write_text(
+        '[project]\ndynamic = ["version"]\n\n'
+        "[tool.hatch.version]\n"
+        'path = "src/mypki/__init__.py"\n'
+        """pattern = \'^__version__ = "(?P<version>[^"]+)"$\'\n""",
+        encoding="utf-8",
+    )
+    (root / "CHANGELOG.md").write_text(f"## [{version}] - 2026-01-01\n", encoding="utf-8")
 
-    `assert code != ok` is written out separately because "2 is not a pass" is the contract of this tool, and a
-    test that
-    only asserted `code != 0` would accept drift as the answer.
+
+def test_require_tag_on_a_plain_directory_is_cannot_check_rather_than_drift(tmp_path: Path) -> None:
+    """A directory with no `.git` has no refs to consult, which is **cannot check** (2), never drift (1).
+
+    Built in a temporary directory rather than asserted against `BUILD_ROOT`, because the answer depends on whether this
+    checkout is a repository today — a fact that changes the moment someone runs `git init`, and which no test should be
+    pinned to. Asserting the real tree's state here would make the suite flip from pass to fail for a reason that has
+    nothing to do with the code under test.
+
+    The distinction is operational, not cosmetic: "no such tag" means a release happened untagged and somebody must go
+    tag it, while "this is not a repository" means there are no refs at all. Reporting the first when the truth is the
+    second sends someone hunting for a tag that was never supposed to exist.
     """
     ok, drift, cannot = _codes()
+    _consistent_tree(tmp_path)
 
-    code = _exit_code(BUILD_ROOT, require_tag=True)
+    code = _exit_code(tmp_path, require_tag=True)
 
     assert code == cannot
     assert code != ok
     assert code != drift
+
+
+def test_require_tag_in_a_repository_without_the_release_tag_is_drift(tmp_path: Path) -> None:
+    """In a real repository, a missing `vX.Y.Z` tag is **drift** (1): git answered, and its answer was "no such tag".
+
+    This is the case that appears once a checkout *is* a repository, and it is the opposite instruction to the test
+    above — here somebody genuinely must go tag the release. Asserted in a throwaway repository for the same reason:
+    `BUILD_ROOT`'s tag state is a moving target while releases are being cut.
+    """
+    ok, drift, cannot = _codes()
+    _consistent_tree(tmp_path)
+
+    init = subprocess.run(["git", "init", "-q"], cwd=tmp_path, capture_output=True, text=True, check=False)
+    if init.returncode != 0:
+        pytest.skip("git is not available in this environment")
+
+    code = _exit_code(tmp_path, require_tag=True)
+
+    assert code == drift
+    assert code != ok
+    assert code != cannot
 
 
 def test_the_tool_can_be_run_as_a_script_from_the_command_line() -> None:

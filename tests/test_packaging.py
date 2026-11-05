@@ -46,13 +46,6 @@ REQUIRED_INCLUDES = [
     "CHANGELOG.md",
     "LICENSE",
     "docs/page-map.md",
-    # The two halves of the frozen record `CHANGELOG.md` now points at. They are here because the changelog is:
-    # shipping the entry that says everything below 0.7.0 lives one file per release under `docs/history/`, while
-    # omitting those files, produces an artifact whose own documentation is unreadable -- the same class of defect as
-    # shipping `tests` without `tools`. Adding an entry adds a param to each parametrized assertion below; that growth
-    # is the point rather than a cost to avoid, because every entry the config names earns its own on-disk check.
-    "docs/history",
-    "docs/measurement-history.md",
 ]
 
 #: What may never appear in an artifact, matched against the *relative* path of every file each include entry covers.
@@ -160,9 +153,9 @@ def test_include_names_everything_a_release_needs(sdist_config: dict[str, list[s
     an sdist whose own test suite aborts at collection with ModuleNotFoundError, which a user reads as "this release is
     broken" rather than "this artifact omitted a file".
 
-    Asserted as a set in both directions, so an entry added to the config without being named here fails too. That half
-    is what guards the split of `CHANGELOG.md`: the changelog gained links into `docs/history/` and
-    `docs/measurement-history.md`, and a one-sided edit would have shipped a release note with dead paths in it.
+    Asserted as a set in both directions, so an entry added to the config without being named here fails too: the config
+    and this list are two spellings of one decision, and a one-sided edit ships an artifact missing something its own
+    documentation promises.
     """
     assert set(sdist_config["include"]) == set(REQUIRED_INCLUDES), sorted(sdist_config["include"])
 
@@ -173,9 +166,8 @@ def test_every_include_entry_exists_on_disk(entry: str) -> None:
 
     `docs/page-map.md` is the sharpest case: it is mypki's citable spec, cited from code as `page-map §N`, and a config
     typo (`docs/` vs `docs/page-map.md`) changes which of the two hatchling honours without any build failing.
-    `docs/history` is the same failure one level up: the entry names a directory, so it passes while carrying eight
-    files, and renaming one of them silently shrinks what ships. `covered_paths` raising on an entry that matches
-    nothing is what makes both spellings fail loudly instead of building a "successful" artifact with a hole in it.
+    `covered_paths` raising on an entry that matches nothing is what makes that typo fail loudly instead of building a
+    "successful" artifact with a hole in it.
     """
     assert covered_paths(entry), f"{entry} covers nothing"
 
@@ -454,9 +446,7 @@ def test_a_named_rule_is_cited_by_name_and_not_quoted_again() -> None:
     module-docstring heading it names, and this constant's own value. Both are pinned here, so they cannot drift.
 
     Read against `app.py` as data rather than against a rendered page, for the same reason the clipboard assertion above
-    reads `static/app.js`: these are promises about source text that no route renders. Frozen history
-    (`docs/history/0.2.0.md`) is deliberately outside the scan — it records what 0.2.0 said, and editing a record to
-    satisfy a gate would be the same mistake as restating a measurement.
+    reads `static/app.js`: these are promises about source text that no route renders.
     """
     phrase = ERROR_SURFACE_RULE
 

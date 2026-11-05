@@ -117,15 +117,13 @@ jobs:
       - name: pytest
         run: python -m pytest --cov=mypki --cov-report=xml
 
-  # ------------------------------------------------------------------ harness parity: deliberately NOT a job here
-  # `tools/harness_parity.py` compares two smoke-harness logs heading for heading and per-section PASS count for per-section PASS
-  # count, so it needs exactly one log from each harness implementation. Given fewer than two usable logs it exits **2**, and this
-  # project reads exit 2 as "could not check", never as a pass — so wiring it into a push or pull_request job would fail every
-  # ordinary run for a reason unrelated to the diff, unless CI also drove both harnesses, which costs minutes per push and binds
-  # ports on the runner. It is therefore a release-time comparison rather than a gate on a diff: drive both harnesses, point this
-  # tool at the two logs they produced, and read `parity: OK` or `parity: NO` with one line per divergence. Its exit-code contract
-  # lives in docs/CHANGE_POLICY.md and README, because a job that cannot supply its own inputs can only assert that it refused to
-  # run.
+  # ------------------------------------------------------------------ the e2e harness: deliberately NOT a job here either
+  # `tools/e2e_harness.py` mints a throwaway CA, binds an ephemeral port, spawns a server and walks sixteen sections of live HTTP,
+  # which costs minutes per push on a runner that would also need its ports unshared. It is the last step of `make gate`, so every
+  # commit owes it locally; CI's legs stay lint / types / pytest / version chain, and this comment is what stops a green CI from
+  # being read as harness evidence. The parity tool that used to sit in this comment (`tools/harness_parity.py`, comparing two
+  # harness logs heading for heading) is deleted with the two harnesses it needed — with one harness there is nothing left to
+  # compare, and its exit-2 'could not check' contract has no inputs to refuse.
 
   # ------------------------------------------------------------------ version chain
   version:

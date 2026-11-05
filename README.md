@@ -75,8 +75,8 @@ Exit 3 is **only** the missing-CA case. A port that is already held prints
 `mypki init-ca` apart from `something else has my port` without reading prose. (Before this was fixed the two
 were indistinguishable: uvicorn swallowed the bind error and exited 3 on its own.)
 
-The smoke harness uses the same family: 0 passed · 1 at least one FAIL · 2 **nothing was checked** — never read as a
-pass ([SMOKE_TESTING.md](SMOKE_TESTING.md)).
+`tools/e2e_harness.py` uses the same family: 0 passed · 1 at least one FAIL · 2 **nothing was checked** — never read as
+a pass ([SMOKE_TESTING.md](SMOKE_TESTING.md)).
 
 ---
 
@@ -271,25 +271,24 @@ nowhere else cannot drift into being the one that actually matters. The coverage
 in `[tool.coverage.report]`, rather than retyped onto each invocation.
 
 `make fast K=KEYWORD` (or `python3 tools/fast_lane.py KEYWORD`) runs the cheap half — scoped ruff, the version chain and a
-targeted `pytest -k` — and leaves mypy, coverage measurement and both harness scripts to the commit gate, which is what it
+targeted `pytest -k` — and leaves mypy, coverage measurement and the end-to-end harness to `make gate`, which is what it
 owes either way.
 
-`tools/harness_parity.py` is not in any gate list because it cannot be: it compares two harness logs heading for heading and
-per-section PASS count for per-section PASS count, so it needs one log from each harness and exits 2 when fewer than two usable
-logs are given. A commit supplies neither, so this is a release-time comparison run alongside `tools/harness_ledger.py` after both
-harnesses have been driven; it exits 1 for any divergence rather than excusing one.
+`tools/harness_parity.py` and `tools/harness_ledger.py` are gone with the two harness logs they compared: with a single harness
+there is nothing left to line up heading for heading, and the ledger it generated from a log is now written by the harness itself.
+The harness is not a separate comparison run either — `make e2e` is the last step of `make gate`, so a commit does owe it.
 
 `docs/page-map.md` is the spec and the code cites it as `page-map §N`; if behaviour and that file disagree, fix both
 in the same commit. Tests are hermetic — a fixture points `MYPKI_DATA_DIR` at a temporary directory, so no test ever
 touches your real CA. CI runs lint, mypy, pytest on **ubuntu-latest and windows-latest** across Python 3.10–3.13 and the
 version chain; the Windows leg is what proves the path handling and that no OpenSSL binary is required.
 
-A harness run's totals, per-section counts and log positions are generated into `reports/harness-ledger.md` (gitignored;
-regenerate it with `tools/harness_ledger.py`) rather than being retyped into a document, because a copied measurement goes stale
-on the first unrelated change and nobody can tell.
+A harness run's totals and per-section counts are written by the harness itself into `reports/harness-ledger.json` (gitignored)
+rather than being retyped into a document, because a copied measurement goes stale on the first unrelated change and nobody can
+tell. Nothing in-tree quotes it; SMOKE_TESTING.md's *Reading the result* says how to read it.
 
 Manual walkthrough: [SMOKE_TESTING.md](SMOKE_TESTING.md), automated by
-`scripts/smoke_test.sh` and `scripts/smoke_test.ps1` (both tracked in git, both excluded from the sdist/wheel).
+`tools/e2e_harness.py` (`make e2e`, and the last step of `make gate`; tracked in git, not part of the installed package).
 
 ---
 

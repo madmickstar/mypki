@@ -200,8 +200,8 @@ Page shows SHA-256 fingerprint + validity for out-of-band verification, plus ins
 copyable, so an operator can verify what they are about to install without saving a file first. It renders only `{% if ca_pem %}` — a host
 whose CA cannot be read still gets its facts table and its download link, not a broken block.
 
-Two assertions keep "the same bytes" honest, because that is exactly the sentence a refactor breaks silently: both harnesses hash the DER
-**inside** `id="pem-ca"` and compare it with the DER of `GET /ca/certificate` (SMOKE_TESTING §9), and §15 asks the same question of a
+Two assertions keep "the same bytes" honest, because that is exactly the sentence a refactor breaks silently: SMOKE_TESTING §9 hashes the DER
+**inside** `id="pem-ca"` and compares it with the DER of `GET /ca/certificate`, and its §15 asks the same question of a
 **third** rendering — the certificate pasted into `/inspect` and read back (§13).
 
 §13 is a different kind of page and must not be confused with this one. `/ca` shows **this host's own root**, read from disk by the code
@@ -222,8 +222,8 @@ enough to read, and a delete would make a valid certificate look never-issued.
 **There is no Revoke column, and as of 0.4.0 no Revoked column either** (`templates/issued.html`). 0.2.0 added a Revoked column
 beside Status; the two said almost the same thing about every row and could disagree if one was misread. The Status cell now carries
 the whole decision: `pill active|revoked`, then — for a revoked row only — `<span class="hint">revoked <UTC> YYYY-MM-DD HH:MM:SSZ</span>`
-and, when a reason was given, the reason under it. Both smoke harnesses scrape `class="hint">revoked YYYY-MM-DD` out of that cell, so
-the *shape* of the stamp line is a contract even though its column is gone, and each harness also asserts that
+and, when a reason was given, the reason under it. The e2e harness scrapes `class="hint">revoked YYYY-MM-DD` out of that cell, so
+the *shape* of the stamp line is a contract even though its column is gone, and it also asserts that
 `<th scope="col">Revoked</th>` occurs **zero** times.
 
 **Status is two states, not three** (`store.IssuedRecord.status`): `active` or `revoked`. A certificate past its `not_after_utc`
@@ -234,8 +234,8 @@ this host knows what every client currently accepts. The expiry fact sits in the
 table; a stamped row carries none (it cannot be un-revoked and there is no delete). The bar above the table holds the Select-all box,
 the counter — server-rendered as `0 selected`, which is the same shape `app.js` writes at zero, so one number has one spelling in both
 languages — and **exactly one** *Revoke Selected* **control**. The *phrase* itself occurs three times on the rendered page:
-once inside the `<button class="danger solid" type="submit">` and twice inside `<strong>` in the no-JavaScript hint. Both
-harnesses therefore assert the split rather than a raw phrase count — exactly one button tag, exactly one
+once inside the `<button class="danger solid" type="submit">` and twice inside `<strong>` in the no-JavaScript hint. The harness
+therefore asserts the split rather than a raw phrase count — exactly one button tag, exactly one
   `class="select-bar"`, and phrase == button + prose — because a count of 3 is correct here and was wrong on 0.3.0,
   where it meant two buttons. 0.4.0 deleted the duplicate button below the table and its `.select-bar.bottom` rule, because
   two buttons for one decision invite a click on whichever is nearer.
@@ -682,8 +682,8 @@ the document. *It does not know about revocation* — from 0.7.0 this host **has
 consults neither, has no trust store and cannot reach any other CA's artifacts, so a certificate reported valid here may have been revoked by
 whoever issued it; `/issued`'s Status column has the same limit.
  *Its findings are not gates*. *A private key is named and
-not opened*. Both harnesses assert all four sentences still appear (SMOKE_TESTING §15), because a reader who assumed otherwise would be misled
-by a page that looks like a verifier.
+not opened*. SMOKE_TESTING §15 asserts all four sentences still appear on the rendered page, because a reader who assumed otherwise would be
+misled by a page that looks like a verifier.
 
 **Private keys are named, never opened.** `redact_private_key_bodies(paste)` returns the paste with each key **body** replaced by
 `KEY_BODY_REDACTED`, plus a count; the armour lines stay, so the operator can see *which* block was redacted. Recognition is by armour only
@@ -786,7 +786,7 @@ protect nothing and break a fetch proxy running as its own account.
 3. **openssl never fetches a CDP.** Measured: with the CRL served live on a port and a leaf carrying exactly the right URL,
    `openssl verify -crl_check` answered **`error 3 at 0 depth lookup: unable to get certificate CRL`** (rc=2) and no GET appeared in this
    server's access log. A baked pointer exists for clients that *do* fetch (browsers, Go, curl-based tooling). For openssl you pass
-   `-CRLfile`, which is what both mypki harnesses do.
+   `-CRLfile`, which is what the e2e harness's §11 STEP F does.
 4. **A revoked certificate that has already expired drops out of the CRL and answers UNKNOWN (§15).** The row stays in `issued.db` forever:
    there is no un-revoke and no delete. "Removed from the CRL" reads to a human like "un-revoked", which is why the sentence is on the page
    rather than only in this file.

@@ -254,8 +254,8 @@ def test_init_ca_creates_the_pair_and_exits_zero(tmp_path: Path) -> None:
     assert result.code == cli.EXIT_OK
     assert "Created root CA." in result.stdout
     # The subject printed is `Settings.ca_cn`, read back from the model rather than written out here: a test that
-    # hard-codes "mypki Root CA" is asserting a copy of a default it does not control (the same rule smoke_test.sh
-    # follows for the version number).
+    # hard-codes "mypki Root CA" is asserting a copy of a default it does not control (the same rule
+    # tools/e2e_harness.py §3 follows for the version number).
     assert f"CN={get_settings().ca_cn}" in result.stdout
     assert "EC P-256" in result.stdout
     for name in ("ca_cert.pem", "ca_key.pem"):
@@ -1686,7 +1686,7 @@ def test_version_flag_prints_the_package_version_and_exits_zero() -> None:
     """`--version` reads `mypki.__version__`; the number is never written into this file.
 
     Asserted against the imported attribute so a version bump cannot leave a stale expectation here (the same rule
-    `scripts/smoke_test.sh` and `tools/check_version.py` follow).
+    `tools/e2e_harness.py` and `tools/check_version.py` follow).
     """
     result = _run("--version")
 

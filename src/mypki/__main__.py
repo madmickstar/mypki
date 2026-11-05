@@ -7,8 +7,8 @@ other (README's quick start uses `mypki …`; the module route is what works fro
 
 Before this suite grew its subprocess tests, neither route was exercised anywhere in the
 suite: README spells the CLI as `mypki …`, `.github/workflows/ci.yml` never invokes it at all, and
-`scripts/smoke_test.sh` only talks to an already-running server. That is the same blind spot that let
-`init-ca --key-type ec` ship broken and unexercised (see CHANGELOG *Fixed*).
+`tools/e2e_harness.py` spawns its own server but reaches it over HTTP rather than through `python -m`. That is the same
+blind spot that let `init-ca --key-type ec` ship broken and unexercised (see CHANGELOG *Fixed*).
 
 `main()` returns an int rather than calling `sys.exit` itself, so tests can assert exit codes 0/1/2/3 directly; the
 `SystemExit` conversion happens here, at the boundary where a process actually exists.

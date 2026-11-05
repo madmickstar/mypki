@@ -78,8 +78,8 @@ from mypki.store import IssuedRecord, IssuedStore
 FIXED_NOW = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
 
 #: The exact 5-byte DER of each protocol-level refusal (MEASURED; plan §2 spelling fix S1). Written as byte literals
-#: rather than described in prose because these two strings are what `scripts/smoke_test.sh` and `smoke_test.ps1` search
-#: for in a decoded body: re-spelling either answer must break a harness, not pass a unit test that quietly moved.
+#: rather than described in prose because these two strings are what `tools/e2e_harness.py` §11 searches
+#: for in a decoded body: re-spelling either answer must break the harness, not pass a unit test that quietly moved.
 MALFORMED_DER = b"\x30\x03\x0a\x01\x01"
 INTERNAL_ERROR_DER = b"\x30\x03\x0a\x01\x02"
 
@@ -219,7 +219,7 @@ def test_every_protocol_refusal_is_five_bytes_of_der() -> None:
     """`MALFORMED_REQUEST` and `INTERNAL_ERROR` are exact 5-byte bodies (MEASURED; plan §2 spelling fix S1).
 
     Asserted as whole byte strings rather than as "contains the status", because these two literals are what
-    `scripts/smoke_test.sh` and `smoke_test.ps1` search for in a base64-decoded body: re-spelling either answer has to
+    `tools/e2e_harness.py` §11 searches for in a base64-decoded body: re-spelling either answer has to
     show up as a harness failure, not as a unit test that quietly moved the goalposts.
 
     The builder form is part of the claim too — `OCSPResponseBuilder.build_unsuccessful(...)` is a classmethod on the

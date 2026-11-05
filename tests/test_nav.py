@@ -7,7 +7,7 @@ the wrong page — and every existing test would stay green, because they assert
 thing between "the route exists" and "an operator can find it".
 
 Why the assertions are written as counts over the rendered page rather than as a check of `base.html`: a grep of the
-template passes against a page that never renders the markup (the same lesson `scripts/smoke_test.sh` §9 records for the
+template passes against a page that never renders the markup (the same lesson SMOKE_TESTING.md §9 records for the
 CA facts, which used to be asserted against a file rather than a response).
 
 MEASURED on this build: `/` and `/csr/sign` share one item (`Sign CSR`) because `home()` renders the sign page, so the

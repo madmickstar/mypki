@@ -9,7 +9,7 @@
        switched off in the browser.
        `static/app.js` adds three niceties on top: copy-to-clipboard for PEM blocks, a live "N selected" counter plus a select-all
        box on /issued, and a modal that asks before a bulk revoke. Each has a server-side equivalent that is what the tests and
-       both smoke harnesses actually exercise. It is loaded with <script src>, which `default-src 'self'` already permits — no
+       tools/e2e_harness.py actually exercise. It is loaded with <script src>, which `default-src 'self'` already permits — no
        unsafe-inline, no inline handler anywhere below, no CDN.
      * Still no inline styles and still no second document: profile help text stays server-side on the sign page rather than
        toggled by a click, because a description the operator has to click to find is a description some operators never find. #}

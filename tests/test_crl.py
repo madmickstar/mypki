@@ -356,7 +356,7 @@ def test_a_crl_that_omits_nextUpdate_is_refused_rather_than_reported_as_endless(
 
 
 def test_pem_armour_is_the_x509_crl_block_and_round_trips(throwaway_ca: CaBundle, tmp_path: Path) -> None:
-    """PEM in, PEM out, same object (plan §2). The armour line is what `/crl` and both harnesses assert.
+    """PEM in, PEM out, same object (plan §2). The armour line is what `/crl` and the e2e harness assert.
 
     `is_signature_valid` is checked on the **reloaded** object rather than the one the builder returned: what a client
     fetches
@@ -682,11 +682,11 @@ def test_a_trailing_slash_is_stripped_once_so_the_paths_cannot_double(tmp_path: 
     assert Settings(crl_base_url="  http://mypki.my.lab  ").crl_base_url == "http://mypki.my.lab"
 
 
-def test_the_pem_marker_is_the_one_spelling_the_page_and_harnesses_grep_for() -> None:
-    """`CRL_PEM_MARKER` is the one spelling `/crl`, `test_packaging.py` and both harnesses assert.
+def test_the_pem_marker_is_the_one_spelling_the_page_asserts() -> None:
+    """`CRL_PEM_MARKER` is the one spelling `/crl`, `test_packaging.py` and the e2e harness assert.
 
-    Asserted as a literal shape here because the harnesses grep for it in shell, where an off-by-one dash (`----BEGIN`)
-    silently matches nothing and a harness that greps for nothing passes.
+    Asserted as a literal shape here because the shell harnesses used to grep for it, where an off-by-one dash
+    (`----BEGIN`) silently matches nothing and a harness that greps for nothing passes.
     """
     assert re.fullmatch(r"-{5}BEGIN X509 CRL-{5}", CRL_PEM_MARKER)
     assert CRL_PEM_MARKER == "-----BEGIN X509 CRL-----"

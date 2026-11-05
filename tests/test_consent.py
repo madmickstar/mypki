@@ -661,7 +661,7 @@ def test_a_consent_grant_does_not_extend_to_a_privilege_claim(
     assert "Rejected extension: BasicConstraints CA:TRUE" in response.text
     # MEASURED wording, with the needle corrected rather than the page rewritten: app.py's hint closes "… and dropped
     # only when you tick the box there." This assertion read "only if you tick the box", a phrase no build prints, and
-    # it failed against a correct 403 page — the assertion was the defect. Both harnesses carry the same correction.
+    # it failed against a correct 403 page — the assertion was the defect. The e2e harness carries the same correction.
     assert "you tick the box there" in response.text
     assert IssuedStore(paths.db_path(data_root)).count() == before
 

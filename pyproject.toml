@@ -79,9 +79,10 @@ packages = ["src/mypki"]
 # `tools` is here because `tests` is: tests/test_version.py imports check_version out of tools/, and shipping
 # the suite without the module it imports means the sdist contains a test suite that aborts at collection with
 # ModuleNotFoundError -- which reads to a user as "this release is broken" rather than "this artifact omitted a
-# file". The exclude half is an assertion, not an absence: scripts/ and logs/ are operator-facing runtime
-# artifacts (tracked in git, useless in an install), and no key material may ever ship. tests/test_packaging.py
-# asserts both halves -- what is included, and that no include entry can reach an excluded thing.
+# file". The exclude half is an assertion, not an absence: `scripts` is the directory the deleted shell harnesses
+# lived in (kept as a pattern so they cannot come back through a release artifact), `logs/` is operator-facing
+# runtime state, and no key material may ever ship. tests/test_packaging.py asserts both halves -- what is
+# included, and that no include entry can reach an excluded thing.
 #
 [tool.hatch.build.targets.sdist]
 include = [

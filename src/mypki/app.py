@@ -1864,8 +1864,8 @@ def _register_routes(app: FastAPI) -> None:
         three pages was rendering them three times, and a fact in two places is two facts that can disagree (§4).
 
         `/csr/sign` renders this same template through these same helpers, so "the front page is the sign page" is one
-        implementation rather than two that drift. Both smoke harnesses read the CA facts on `/ca` and the sign form on
-        `/`, which is what keeps this split honest rather than merely intended.
+        implementation rather than two that drift. The harness reads the CA facts on `/ca` (§9) and the sign form on `/`
+        (§1), which is what keeps this split honest rather than merely intended.
         """
         return sign_page(request)
 
@@ -2101,7 +2101,7 @@ def _register_routes(app: FastAPI) -> None:
 
         The reason keeps the class `<p class="reason">` it had on `error.html`, so "read mypki's stated reason"
         remains one selector for a test or a scraper whichever surface rendered it. `log.info` lines are unchanged:
-        they are what the harnesses and an operator's own log reader already depend on.
+        they are what the harness and an operator's own log reader already depend on.
         """
         if isinstance(exc, CsrValidationError):
             status, reason, hint = 400, exc.reason, "Nothing was signed. Fix the paste above and submit again."

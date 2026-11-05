@@ -16,7 +16,7 @@ the sentence under the table before you rely on that.
 {# ------------------------------------------------------------------------------------------- confirmation step (0.3.0)
    A POST to /issued/revoke without confirm=1 stamps nothing: it comes back here with this block at the TOP, naming every
    certificate that is about to be stamped. This is the path a browser without JavaScript takes, and the path the test suite
-   and both smoke harnesses exercise; static/app.js renders its modal as a prettier route to the same POST. #}
+   and tools/e2e_harness.py §11 exercise; static/app.js renders its modal as a prettier route to the same POST. #}
 {% if pending %}
 <section class="confirm-revoke">
   <h2>Revoke {{ pending | length }} certificate{{ 's' if pending | length != 1 else '' }}?</h2>
@@ -169,7 +169,7 @@ the sentence under the table before you rely on that.
 
            0.4.0 puts the revocation stamp here rather than in its own column: a row had a Status pill AND a Revoked column
            saying almost the same thing, and the pair could disagree if one was misread. One cell now carries the decision,
-           when it was made and why. Both harnesses scrape `class="hint">revoked YYYY-MM-DD` from this cell, so the shape of
+           when it was made and why. The e2e harness scrapes `class="hint">revoked YYYY-MM-DD` from this cell, so the shape of
            the stamp line is a contract even though its column is gone. #}
         <td>
           <span class="pill {{ record.status }}">{{ record.status }}</span>

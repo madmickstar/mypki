@@ -78,8 +78,8 @@ PAGES = (
 )
 
 #: The exact 5-byte DER refusal `/ocsp` answers for a body it cannot parse (MEASURED; the same literal `test_ocsp.py`
-#: asserts and both harnesses search for). Named here because "the refusal contains nothing" is only checkable if you
-#: know what the refusal is.
+#: asserts and the harness's §11 searches for). Named here because "the refusal contains nothing" is only checkable if
+#: you know what the refusal is.
 MALFORMED_DER = b"\x30\x03\x0a\x01\x01"
 
 NO_CA_MARK = "Run `mypki init-ca`"

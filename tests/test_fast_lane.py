@@ -66,13 +66,12 @@ def test_the_commit_only_steps_name_everything_the_fast_lane_drops() -> None:
     """The list the tool prints as "deliberately not in the fast lane" has to name the real slow gates.
 
     If one of these disappeared from `COMMIT_ONLY_STEPS` the tool would stop telling anyone that mypy, coverage and the
-    harnesses are still required at commit — a silent omission is how "fast" turns into "incomplete".
+    end-to-end harness are still required at commit — a silent omission is how "fast" turns into "incomplete".
     """
     committed = fast_lane.COMMIT_ONLY_STEPS
     assert "mypy src" in committed
     assert "pytest --cov" in committed
-    assert "scripts/smoke_test.sh" in committed
-    assert "scripts/smoke_test.ps1" in committed
+    assert "tools/e2e_harness.py" in committed
 
 
 # ------------------------------------------------------------------------------------------------ what it must not
@@ -94,8 +93,7 @@ def test_no_build_step_is_a_slow_gate() -> None:
         for name, cmd in steps:
             rendered = f"{name} {' '.join(cmd)}"
             assert "mypy" not in rendered, f"a type gate entered the fast lane: {rendered}"
-            assert "smoke_test" not in rendered, f"a harness run entered the fast lane: {rendered}"
-            assert "harness_ledger" not in rendered, f"a ledger run entered the fast lane: {rendered}"
+            assert "harness" not in rendered, f"a harness run entered the fast lane: {rendered}"
             for token in cmd:
                 if token.startswith("-cov") or token.startswith("--cov"):
                     raise AssertionError(f"coverage measurement entered the fast lane: {rendered}")

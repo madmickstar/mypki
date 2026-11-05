@@ -232,7 +232,7 @@ def test_the_shipped_script_says_copied_and_nothing_else() -> None:
     assert "Nothing was sent anywhere" not in script
     assert "could not be copied by this browser" in script
 
-    # The counter text the smoke harnesses compare against the server-rendered '0 selected': app.js must build the same
+    # The counter text SMOKE_TESTING §10 compares against the server-rendered '0 selected': app.js must build the same
     # shape at zero rather than a different sentence.
     assert '+ " selected";' in script
 
@@ -325,10 +325,20 @@ def test_the_coverage_check_is_not_vacuous() -> None:
     apart from a
     blind one (STYLE §8: mutate one thing, prove the check sees it).
     """
-    would_ship = covered_paths("scripts")
+    # The walker half: `covered_paths` has to return real, repo-relative POSIX paths for an entry that exists, because
+    # every "no include entry reaches a forbidden thing" assertion below is only as good as this walk. `tools` is the
+    # entry to walk now: it is a shipped directory named file by file, and the harness is one of those files.
+    walked = covered_paths("tools")
+    assert walked, "the coverage helper walks nothing even for an entry that exists"
+    assert all(path.startswith("tools/") for path in walked), f"paths were not repo-relative: {walked[:5]}"
+    assert "tools/e2e_harness.py" in walked, f"the harness is not where the Makefile gate runs it from: {walked}"
 
-    assert forbidden_in(would_ship) == sorted(would_ship), "the coverage helper found nothing inside scripts/ at all"
-    assert "scripts/smoke_test.sh" in would_ship
+    # The pattern half: a poisoned *path* list must be caught in full. `scripts/` no longer holds anything in this tree,
+    # so the old recipe (feed the walker the literal entry `scripts` and demand that everything it found was forbidden)
+    # now proves nothing about the patterns — it would read "empty is fully forbidden". Naming the four shapes directly
+    # keeps the mutation visible: drop any one pattern from FORBIDDEN_PATTERNS and this assertion goes red.
+    poisoned = ["scripts/smoke_test.sh", "logs/mypki.log", "src/mypki/ca_key.pem", "keys/ca.key", "leaf.crt"]
+    assert forbidden_in(poisoned) == poisoned, f"a forbidden shape slipped through: {forbidden_in(poisoned)}"
 
 
 def test_no_key_material_exists_anywhere_the_include_entries_walk() -> None:
@@ -348,16 +358,27 @@ def test_no_key_material_exists_anywhere_the_include_entries_walk() -> None:
 
 
 def test_the_sdist_keeps_the_harness_out_of_an_installed_ca() -> None:
-    """`scripts/` is excluded on purpose, and the reason should survive whoever reads this file next.
+    """`scripts/` is excluded on purpose, and the reason has to survive whoever reads this file next.
 
-    A curl harness in an installed package invites someone to run it against a production CA from a site-packages
-    directory; a source checkout is exactly where a smoke harness belongs. Asserted as "excluded" plus "the
-    scripts exist",
-    so the pair reads as a decision rather than an omission.
+    The harness moved out of `scripts/` into `tools/e2e_harness.py`, so two facts are now asserted where one used to be:
+      * `scripts/` is still an exclude entry **and nothing is in it any more**: the entry outlived its directory, and
+        that is deliberate — a bare `scripts` exclusion is what stops a future operator-facing shell helper (the kind
+        someone will write again for curl-by-hand reproduction) from riding into site-packages, where running it against
+        a production CA is one tab-completion away.
+      * the harness itself lives under `tools/`, which **is** shipped — because `tools/` is already in `include` for
+        `test_version.py`'s import, and an end-to-end harness that only needs the project's own dev dependencies is
+        something a downstream packager can actually run to prove the release works on their box.
+    Asserted as "excluded + empty + the harness exists where the Makefile says it does", so the pair reads as a decision
+    rather than an omission.
     """
-    assert (BUILD_ROOT / "scripts/smoke_test.sh").is_file()
-    assert (BUILD_ROOT / "scripts/smoke_test.ps1").is_file()
+    scripts = BUILD_ROOT / "scripts"
+    assert not scripts.exists() or not any(p.is_file() for p in scripts.rglob("*")), (
+        "scripts/ is excluded from the sdist and is meant to stay empty: a tracked harness belongs in tools/, "
+        "where the Makefile gate can reach it, not in a directory an installed package never sees"
+    )
+    assert (BUILD_ROOT / "tools" / "e2e_harness.py").is_file()
     assert "scripts" in REQUIRED_EXCLUDES
+    assert "tools" in REQUIRED_INCLUDES
 
 
 def _spawn_cli(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -425,7 +446,7 @@ def test_the_console_script_route_reports_the_same_version(tmp_path: Path) -> No
     script should fail as "the install produced no console script", not as an OSError from `subprocess.run`.
 
     Both routes are asserted against the imported `__version__` rather than a literal, so a release bump cannot leave a
-    stale expectation here (the same rule `scripts/smoke_test.sh` and `tools/check_version.py` follow).
+    stale expectation here (the same rule `tools/e2e_harness.py` and `tools/check_version.py` follow).
     """
     script_name = "mypki.exe" if os.name == "nt" else "mypki"
     script = Path(sys.executable).parent / script_name

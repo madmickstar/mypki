@@ -57,10 +57,10 @@ desktop.ini
 !.env.example
 
 # ---------------------------------------------------------------- generated reports
-# `reports/harness-ledger.md` and `.json` are written by tools/harness_ledger.py from a harness log, on this machine, about
-# this machine's run: which ports were free, which pwsh build answered, how many scratch dirs were lying around. Committing
-# them would freeze one box's numbers into the repository as if they were a property of the release, which is the exact
-# confusion docs/CHANGE_POLICY.md exists to prevent. The documents link to this path instead of copying from it.
+# `reports/harness-ledger.json` is written by tools/e2e_harness.py at the end of its own summary -- totals and per-section
+# pass/fail/warn counts for this machine's run, no longer re-derived from a log file by a second tool. Committing it would
+# freeze one box's numbers into the repository as if they were a property of the release. The documents point at this path
+# and say how to read it instead of copying numbers out of it.
 reports/
 
 # ---------------------------------------------------------------- runtime state

@@ -12,7 +12,7 @@ is named <code>mypki-root-ca.crt</code> on purpose: Windows' double-click instal
 {# 0.3.0: this is the ONE page that states what this host's root CA is. The card that used to repeat these facts above the
    Sign-CSR form is gone (page-map §1): a fact shown in two places is two facts that can drift apart, and the user's own
    words for it were "the /ca menu already owns it". So the assertions about BasicConstraints and key presence — the ones
-   `scripts/smoke_test.sh` §1 and two tests in test_views.py carry — moved here rather than being deleted with the card.
+   `tools/e2e_harness.py` §1/§9 and two tests in test_views.py carry — moved here rather than being deleted with the card.
    Everything in this table comes from `describe_ca`, which has no parameter that could ask for something private, plus one
    boolean for key presence. #}
 <section class="card">

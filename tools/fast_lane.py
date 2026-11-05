@@ -12,7 +12,7 @@ WHAT IT RUNS, AND WHY THOSE
     pytest -q --no-cov -k PATTERN                1-20 s   the tests for what you actually changed
 
 WHAT IT DELIBERATELY OMITS
-    mypy, coverage and both harness scripts. Those belong to a commit or a release, not to an edit: `mypy src` is half
+    mypy, coverage and the e2e harness. Those belong to a commit or a release, not to an edit: `mypy src` is half
     a second but answers a question an unchanged signature did not raise; coverage needs the whole suite to mean
     anything; a harness run costs minutes and only earns its cost when a user-visible string or a status code moved.
     The omission is asserted in `tests/test_fast_lane.py`, because "the fast lane is fast" decays the first time
@@ -67,8 +67,8 @@ BUILD_ROOT = Path(__file__).resolve().parent.parent
 VENV_PYTHON = BUILD_ROOT / VENV_DIR / "bin" / "python"
 
 #: Steps that run on every edit, ordered to fail cheapest first. Data rather than inline calls in `main` so
-#: `tests/test_fast_lane.py` can assert what this lane is *not*: mypy, coverage, the src/ prose gate and the harness
-#: scripts stay out.
+#: `tests/test_fast_lane.py` can assert what this lane is *not*: mypy, coverage, the src/ prose gate and the e2e
+#: harness all stay out.
 LINT_STEPS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("ruff check", ("-m", "ruff", "check", "src", "tests", "tools")),
     ("ruff format --check", ("-m", "ruff", "format", "--check", "src", "tests", "tools")),
@@ -76,13 +76,11 @@ LINT_STEPS: tuple[tuple[str, tuple[str, ...]], ...] = (
 
 #: Everything this lane refuses to run, spelled out so `--dry-run` can name it and the test that pins the lane can
 #: assert each entry stayed out. Keeping this list honest is the point: if a slow gate vanished from it, the tool would
-#: stop telling anyone that mypy, coverage and the harnesses are still owed at commit.
+#: stop telling anyone that mypy, coverage and the end-to-end harness are still owed at commit.
 COMMIT_ONLY_STEPS: tuple[str, ...] = (
     "mypy src",
     "pytest --cov",
-    "scripts/smoke_test.sh",
-    "scripts/smoke_test.ps1",
-    "tools/harness_ledger.py",
+    "tools/e2e_harness.py",
 )
 
 
@@ -197,7 +195,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"FAILED {line}", file=sys.stderr)
         print(
             "the fast lane is the floor, not the whole gate set: mypy, coverage and (when a visible string or status "
-            "code moved) both harness scripts still run before a commit - see the Makefile targets",
+            "code moved) tools/e2e_harness.py still runs before a commit - see the Makefile gate target",
             file=sys.stderr,
         )
         return 1

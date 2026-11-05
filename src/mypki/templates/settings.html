@@ -64,8 +64,9 @@ on screen at once instead of one being inferred from the other.
    and after 0.4.0 those are different answers for different knobs. So the word is green and large, and what moved is
    named beside it in the two groups that actually behave differently. #}
 <section class="done">
-  {# The one word, in green, is the pill. `test_settings_save.py` and both smoke harnesses read the file path out of
-     this line (`saved to <code>…</code>`), so the wording below stays scrapeable even though the emphasis moved. #}
+  {# The one word, in green, is the pill. `test_settings_save.py` reads the file path out of this line
+     (`saved to <code>…</code>`), so the wording below stays scrapeable even though the emphasis moved. The harness never
+     makes a successful save, so it asserts nothing against this line — see SMOKE_TESTING §12. #}
   <p class="saved-word"><span class="pill active">Saved</span> to <code>{{ config_file }}</code></p>
   {% if changed %}
   <ul class="changed-list">
@@ -160,10 +161,10 @@ on screen at once instead of one being inferred from the other.
         <h3>Currently on this host</h3>
         <table class="facts">
           {# `class="mono"` is kept exactly as-is for a row in its normal state, and only an off-normal state adds the colour
-             class. That is a rendering choice with a test consequence worth naming: both smoke harnesses scrape the resolved
-             data directory out of this panel to feed their key-path leak sweep (`grep -A 1 'Data directory (resolved)'` then a
-             `<td class="mono">…</td>` match), so a status colour on every row would silently break a check that exists to
-             prove nothing private is rendered. #}
+             class. That is a rendering choice with a test consequence worth naming: tools/e2e_harness.py §12 scrapes the resolved
+             data directory out of this panel to feed its key-path leak sweep (a `<th>Data directory (resolved)</th>` …
+             `<td class="mono">…</td>` match over the joined page), so a status colour on every row would silently break a check that
+             exists to prove nothing private is rendered. #}
           {% for row in status_rows %}
           <tr>
             <th scope="row">{{ row.label }}</th>

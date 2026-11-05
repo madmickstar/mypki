@@ -47,6 +47,26 @@ release that does not exist.
   the tag case, its own throwaway repository, so it asserts the behaviour rather than the accident of this checkout.
 - **`tools/fast_lane.py` no longer runs a docs gate that does not exist.** `DOC_TOOLS` is now the version chain alone,
   and `tests/test_fast_lane.py` pins it by name while asserting every named tool is actually present on disk.
+- **One harness instead of two, and `make gate` runs it.** Deleted: `scripts/smoke_test.sh`, `scripts/smoke_test.ps1`,
+  `tools/harness_parity.py` (compared the two logs heading for heading) and `tools/harness_ledger.py` (re-parsed a log to
+  recover counts the harness had already printed, and wrote `reports/harness-ledger.md`). `tools/e2e_harness.py` is now the
+  only end-to-end harness: it mints its own throwaway CA, spawns `mypki serve` on an ephemeral port, walks SMOKE_TESTING §1–§16
+  over one socket, and writes its own counts to `reports/harness-ledger.json` — no log-parsing step in between. `gate` gained
+  `e2e` as its last step and lost the echo that used to announce the harness was *not* wired in; `tools/fast_lane.py`
+  `COMMIT_ONLY_STEPS` names `tools/e2e_harness.py` where it used to name the two scripts. Nothing under `reports/` is tracked,
+  so a run's totals cannot be mistaken for a property of the release.
+- **Four harness assertions were measuring the wrong thing, and all four now measure what they claimed to.** Each was
+  green against a correct app while asserting something else — the class of defect this project keeps measuring:
+  §6 counted `href="` characters instead of following the two download links and reading their labels and
+  `Content-Disposition`, so misnamed or swapped downloads passed; §7 posted the DER case in the shape `_form_fields()`
+  stringifies an uploaded part, which answered a reason the app never gave for that input; §12 pinned a client-profile
+  sentence ending in a period that `signing.py` does not render, reading 0 against a correct page; and §11 searched for
+  three serials that were never published on the page it read, replacing hex needles with per-serial listings taken from
+  the parsed CRL. Five further raw-byte probes were retired because a DER parser answers the same question more strongly,
+  which is also what removed the offset-scoping hack (`8000`/`8200` appearing inside an RSA signature 11 times in 300 signed
+  REVOKED answers, 0 times once the search was cut at the signature's AlgorithmIdentifier). §11 STEP F now runs `openssl`
+  — six assertions, WARNing when the binary is absent — including `verify -crl_check` with no `different CRL scope`, which
+  re-derives `crl.py`'s decision to omit an IssuingDistributionPoint instead of quoting a measurement for it.
 
 ## [0.7.1] - 2026-11-05
 

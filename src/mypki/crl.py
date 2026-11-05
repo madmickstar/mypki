@@ -74,7 +74,8 @@ log = logging.getLogger("mypki.crl")
 CRL_LIFETIME = dt.timedelta(hours=24)
 
 #: The armour line `cryptography` and openssl agree on (`openssl crl -in <file> -noout -text` parses what
-#: `load_pem_x509_crl` writes, and vice versa). Named here because the `/crl` page and the harnesses both assert it.
+#: `load_pem_x509_crl` writes, and vice versa). Named here because the `/crl` page, `test_crl.py` and the harness's
+#: §11 each assert this one spelling.
 CRL_PEM_MARKER = "-----BEGIN X509 CRL-----"
 
 __all__ = [

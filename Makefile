@@ -8,7 +8,7 @@
 #
 # START HERE
 #   make fast K=sign      while editing: scoped lint + version chain + targeted pytest -k, no coverage
-#   make gate             before committing: lint, types, full suite with coverage, version chain
+#   make gate             before committing: lint, types, version chain, full suite with coverage, then the harness
 #   make zip              release artifact from the git file list (run last; a zip is a copy of what was gated)
 #
 # COVERAGE FLOOR
@@ -42,7 +42,7 @@ help:
 	@echo "  make test K=<expr>   targeted pytest only, coverage disabled"
 	@echo "  make version         tools/check_version.py: 0 consistent, 1 drift, 2 cannot check"
 	@echo "  make e2e             the end-to-end harness: real server, real HTTP, real openssl"
-	@echo "  make gate            everything a commit owes (lint types version cov)"
+	@echo "  make gate            everything a commit owes (lint types version cov e2e)"
 	@echo "  make zip             build $(DIST_NAME).zip from git ls-files, leak-scan it, prove digests"
 	@echo "  make clean           remove caches, .coverage and staging dirs"
 
@@ -66,13 +66,15 @@ fast:
 version:
 	$(PY) tools/check_version.py
 
-# `e2e` points at the end-to-end harness. It joins `gate` in the commit that adds the tool; until then `gate` names the
-# harness it is not running rather than passing silently, so nobody reads a green `make gate` as harness evidence.
+# `e2e` is the end-to-end harness: it mints its own throwaway CA, spawns a real server on an ephemeral port, drives
+# SMOKE_TESTING.md §1-§16 over one socket, and cleans its scratch tree up after itself (exit 0 pass / 1 FAIL / 2 nothing
+# checked — the same contract both shell harnesses had). It runs LAST in `gate` because it is the only gate that can say
+# "the bytes a browser would have received are right": lint, mypy and pytest all answer questions about source, and a
+# green suite with a broken download header is exactly the failure this project keeps measuring.
 e2e:
 	$(PY) tools/e2e_harness.py
 
-gate: lint types version cov
-	@echo "commit gates clean; the e2e harness is not wired into 'gate' yet — run 'make e2e' separately."
+gate: lint types version cov e2e
 
 # The manifest comes from git, not from a hand-typed list and not from a directory walk. A directory walk would pick up
 # runtime state that happens to be sitting in the tree (build/src/logs/mypki.log did exactly that once); a hand-typed

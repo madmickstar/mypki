@@ -406,7 +406,7 @@ def _knob_value(page, knob: str) -> str | None:
     Read structurally for the same reason `_reason()` and `_inline_reasons()` are: `assert "7" in page.text` is also
     true of a page where 7 appears in an unrelated hint sentence. Anchoring on `name="MYPKI_MAX_SANS"` means the value
     belongs to the knob being asserted on. The tag is joined across lines first because settings.html breaks an input
-    over five lines (type, min, max, value), exactly as both smoke harnesses do.
+    over five lines (type, min, max, value), exactly as tools/e2e_harness.py §12 has to handle.
     """
     joined = re.sub(r"\n\s*", " ", page.text)
     match = re.search(rf'<input[^>]*name="{knob}"[^>]*value="([^"]*)"', joined)

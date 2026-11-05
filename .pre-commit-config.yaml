@@ -56,8 +56,7 @@ repos:
         files: ^(src/mypki/__init__\.py|pyproject\.toml|CHANGELOG\.md)$
         pass_filenames: false
 
-      # `tools/harness_parity.py` is deliberately absent from this file. It compares two smoke-harness logs — heading for
-      # heading, per-section PASS count for per-section PASS count — so it needs exactly one log from each harness
-      # implementation, and given fewer than two usable logs it exits 2, which this project reads as "could not check"
-      # rather than as a pass. A commit supplies neither log. It is a release-time comparison run alongside
-      # tools/harness_ledger.py, not a hook.
+      # There is deliberately no harness hook here. The end-to-end harness mints a throwaway CA, binds an ephemeral port and
+      # spawns a server, which is minutes of work rather than a per-file check; `tools/harness_parity.py` (which compared two
+      # harness logs) and `tools/harness_ledger.py` (which rebuilt counts from a log) are deleted with the two harnesses they
+      # needed. The harness is gated instead: `make gate` runs it last.

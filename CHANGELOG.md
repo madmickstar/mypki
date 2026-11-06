@@ -31,6 +31,33 @@ release that does not exist.
 
 ### Changed
 
+- **A targeted pytest run now says what it ran.** `pyproject.toml`'s `addopts = "-q --strict-markers"` already asks for
+  quiet, and both `make test` and `tools/fast_lane.py` asked again: two `-q` flags stack to `-qq`, which suppresses pytest's
+  summary line entirely. MEASURED before the change, `make test K=csr_generate` printed dots and `[100%]` and nothing else;
+  after it the same command answers `28 passed, 787 deselected in 19.60s`, and the fast lane prints
+  `28 passed, 787 deselected in 18.98s`. The flag is now declared in exactly one place. This matters for the same reason the
+  lane's exit-5 message exists: a run that cannot report a pass count makes "the pattern matched nothing" indistinguishable
+  from "the tests passed", which is the failure mode `make fast` most needs to be able to name.
+- **`make fast K=...` accepts both spellings, and rejects neither silently.** Bare keywords are ORed (`K="csr_generate ca_page"`
+  → `-k "csr_generate or ca_page"`) because pytest accepts no space-separated list of names — MEASURED,
+  `-k "csr_generate ca_page"` exits **4**. A written expression is now passed through as written
+  (`K="csr_sign and not csr_generate"` reaches pytest unchanged), because make expands `$(K)` unquoted and the shell had been
+  splitting its operators into ordinary words for `' or '` to join: `K="a or b"` became `-k "a or or or b"`, which pytest
+  refuses with exit **4** *after* the lane has already paid for scoped ruff and the version chain. `tools/fast_lane.py`
+  validates the expression itself instead — a leading binary operator, an operator at the end, or two binary operators side by
+  side now exit **2** in 73ms with no step run at all (`bad -k expression: 'or' and 'or' are adjacent operators - pytest has
+  nothing between them`). Exit 4 is also translated rather than flattened, alongside the existing exit 5: live probe
+  `fast_lane.py csr_sign and not csr_generate` exits 1 reading `[NO TESTS RAN - the -k pattern matched nothing, so this proves
+  nothing]`, which is the true report for a valid expression selecting nothing.
+- **The lane stopped printing a false claim about its own checkout, and its report now reads in order.** Run *through* the
+  venv — which is what `make fast` does, since `PY` resolves to `.venv/bin/python` — and `interpreter_note` printed
+  `interpreter: …/.venv/bin/python — no .venv/bin/python in this checkout, so the invoking interpreter is used unchanged`
+  while naming that very path as the interpreter. It branched on `interpreter == sys.executable`, which is exactly true when
+  the venv python *is* the invoker; it now asks the same question `step_interpreter` asks (does this checkout's venv python
+  exist) and prints `… — this checkout's .venv; invoked through … (the same interpreter)`. Separately, Python block-buffers
+  stdout whenever it is not a terminal, so `fast_lane.py … > log 2>&1` put `FAILED ruff check` and the skipped-steps line
+  *before* `[exit 1] ruff check (0.06s)` — a merged log read the conclusion before the step that caused it. Every printed line
+  is flushed now, so a redirected run reads in the order things happened.
 - **`make docs`: a cheap target for a change that touches only `.md`.** Until now the Makefile offered `make fast K=<expr>`
   or `make gate`, and `make fast` refuses to run without a `-k` pattern (exit 2, "no -k pattern given") — which a prose edit
   has nothing to put in. The only documented option left for a documentation change was therefore the full suite with coverage

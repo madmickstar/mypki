@@ -62,9 +62,18 @@ types:
 cov:
 	$(PY) -m pytest --cov=mypki --cov-report=term-missing
 
+# No `-q` here. `pyproject.toml`'s addopts already declares `-q --strict-markers`, and a second `-q` stacks to `-qq`,
+# which suppresses pytest's summary line entirely: MEASURED, `make test K=csr_generate` printed dots and [100%] and no pass
+# count and no duration, while the same file without the extra flag answered '28 passed in 17.74s'. A targeted run that
+# cannot say how many tests it ran has thrown away the one number that distinguishes "the pattern matched" from "the pattern
+# matched nothing" - which is the same evidence fast_lane.py's exit-5 and exit-4 messages exist to protect.
+#
+# K= is passed through to pytest unchanged, so this target accepts a real -k expression (`K="csr_sign and not csr_generate"`)
+# as well as one keyword. `make fast` instead reads bare keywords as ORed, because it joins them itself; see
+# tools/fast_lane.py's HOW THE PATTERN IS READ.
 test:
 	@test -n "$(K)" || (echo "make test needs K=<pytest -k expression>" && exit 2)
-	$(PY) -m pytest -q -p no:cacheprovider --no-cov -k "$(K)"
+	$(PY) -m pytest -p no:cacheprovider --no-cov -k "$(K)"
 
 fast:
 	$(PY) tools/fast_lane.py $(K)

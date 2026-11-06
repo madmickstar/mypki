@@ -18,10 +18,27 @@ WHAT IT DELIBERATELY OMITS
     The omission is asserted in `tests/test_fast_lane.py`, because "the fast lane is fast" decays the first time
     someone adds a slow step to it for convenience.
 
-ONE FAILURE MODE WORTH NAMING
+THE EXIT CODES A WRAPPER MUST NOT FLATTEN
     pytest exits **5** when its `-k` pattern matched nothing. A wrapper that reads any non-zero exit as "tests failed"
     and any zero as "fine" would report success for every mistyped pattern, which is worse than running no tests. Exit 5
     is reported here as a failure, with the reason spelled out.
+
+    pytest also exits **4** when the expression cannot be parsed at all (`-k "a or or b"` - MEASURED on this tree). Same
+    reasoning: it is a mistake in the command and nothing about the tree, and naming it is the only clue a reader has.
+
+HOW THE PATTERN IS READ, AND WHY BOTH SPELLINGS WORK
+    `make fast K=csr_generate ca_page` and `make fast K="csr_generate or ca_page"` reach this tool as the same
+    three words, because make expands `$(K)` unquoted and the shell splits on whitespace. They used to be treated
+    identically - joined with `' or '` whatever the caller wrote - which made the second spelling produce `-k "a
+    or or or b"`, and pytest refuses that with exit 4 after the lane has already paid for lint and the version
+    chain.
+
+    So the words are read looking for operators. Bare keywords are ORed, because pytest accepts no space-separated
+    list of names (`-k "csr_generate ca_page"` exits 4, MEASURED). If the caller wrote `or`, `and` or `not` at
+    all, those belong to pytest and the words are rejoined with single spaces so the expression arrives as
+    written. An expression that cannot be valid - a leading binary operator, an operator at the end, two binary
+    operators side by side - is rejected here with exit 2 before any step runs, rather than found by pytest at the
+    most expensive moment in the run.
 
 A SECOND INVOCATION BUG, AND THE NASTIER ONE
     Run this through an interpreter that does not have mypki installed — the system `python3` of a checkout whose
@@ -50,17 +67,25 @@ STOPS AT THE FIRST FAILING STEP
     failure and re-run: the later steps are uncollected evidence, not passed evidence.
 
 USAGE
-    python3 tools/fast_lane.py KEYWORD [KEYWORD...]   # lint + version chain + pytest -k KEYWORD
+    python3 tools/fast_lane.py KEYWORD [KEYWORD...]   # lint + version chain + pytest -k <keywords ORed>
+    python3 tools/fast_lane.py csr_sign and not csr_generate   # an expression, passed through as written
     python3 tools/fast_lane.py --dry-run              # print the plan, run nothing
     python3 tools/fast_lane.py --no-docs              # skip the version-chain gate
 
-Exit codes: 0 all steps passed · 1 a step failed (its reason printed, later steps not run) · 2 usage error
-(no pattern and not --dry-run).
+Exit codes: 0 all steps passed · 1 a step failed (its reason printed, later steps not run) · 2 usage error (no pattern
+and not --dry-run, or a -k expression that could not be valid).
+
+ONE FLAG DECLARED ELSEWHERE ON PURPOSE
+    The pytest step carries no `-q`. `pyproject.toml`'s `addopts = "-q --strict-markers"` already asks for quiet,
+    and a second `-q` stacks to `-qq`, which suppresses pytest's summary line - no pass count, no duration. That
+    is the number this lane exists to produce, and it is the same evidence exit 5 protects: without it, a run that
+    deselected everything looks like a run that passed something.
 """
 
 from __future__ import annotations
 
 import argparse
+import itertools
 import subprocess
 import sys
 import time
@@ -98,19 +123,88 @@ COMMIT_ONLY_STEPS: tuple[str, ...] = (
 )
 
 
+#: Words that are pytest's own operators rather than test names. Lower-cased on purpose: `-k` is case-sensitive about
+# them, so `OR` is a substring to match and not an operator.
+PYTEST_OPERATORS: frozenset[str] = frozenset({"or", "and", "not"})
+
+#: Operators that are legal with nothing before them. `not sign` is a whole expression; `or sign` is not.
+_UNARY_OPERATORS: frozenset[str] = frozenset({"not"})
+
+
+def flatten_patterns(patterns: Sequence[str]) -> list[str]:
+    """Split every argument on whitespace, so quoting is the caller's choice and not a change of behaviour.
+
+    `fast_lane.py "csr_generate ca_page"` arrives as one argument and `make fast K="csr_generate ca_page"` arrives
+    as two, because make expands `$(K)` unquoted. Both mean the same request. Flattening is what makes them behave
+    alike: the single-argument spelling used to go straight to pytest as `-k "csr_generate ca_page"`, which exits
+    4.
+    """
+    return [word for pattern in patterns for word in pattern.split()]
+
+
+def expression_operators(words: Sequence[str]) -> list[str]:
+    """The operator words in a flattened pattern list, in order."""
+    return [word for word in words if word in PYTEST_OPERATORS]
+
+
+def validate_expression(words: Sequence[str]) -> str | None:
+    """Why this expression cannot be valid, or None when it can.
+
+    Checked here rather than left to pytest because the lane runs lint and the version chain first: a malformed pattern
+    discovered by pytest is one discovered after everything cheap has been paid for. Three shapes are caught - a leading
+    binary operator, an operator with nothing after it, and two binary operators side by side. `and not` / `or not` are
+    allowed because that is how a negation is written, and so is a leading `not`.
+    """
+    if not words:
+        return "no pattern words remain after splitting the arguments"
+
+    first = words[0]
+    if first in PYTEST_OPERATORS and first not in _UNARY_OPERATORS:
+        return f"the expression starts with {first!r}, which needs something before it"
+
+    last = words[-1]
+    if last in PYTEST_OPERATORS:
+        return f"the expression ends with the operator {last!r} and nothing after it"
+
+    for previous, current in itertools.pairwise(words):
+        binary_after_binary = previous in PYTEST_OPERATORS and current in PYTEST_OPERATORS
+        if binary_after_binary and current not in _UNARY_OPERATORS:
+            return f"{previous!r} and {current!r} are adjacent operators - pytest has nothing between them"
+
+    return None
+
+
+def pytest_expression(patterns: Sequence[str]) -> str:
+    """The `-k` expression this lane hands to pytest, from however the caller spelled the request.
+
+    Bare keywords are ORed because pytest accepts no space-separated list of names. An expression the caller wrote is
+    rejoined with single spaces and passed through, because its operators belong to pytest - joining them again is what
+    turned `K="a or b"` into `-k "a or or or b"`. The two readings cannot be told apart any other way, since make splits
+    both into the same words, so an operator word present at all is the signal. It is a fair one: a test named literally
+    `or`, `and` or `not` would already match every test in the suite.
+    """
+    words = flatten_patterns(patterns)
+    if expression_operators(words):
+        return " ".join(words)
+    return " or ".join(words)
+
+
 def build_steps(patterns: Sequence[str], *, include_docs: bool) -> list[tuple[str, tuple[str, ...]]]:
     """The exact commands this lane will run, in order.
 
     `--no-cov` is not an optimisation: coverage measurement is what makes pytest slow, and a partial run measures a
     partial denominator, so any percentage printed here would mean nothing. Coverage belongs to the full-suite gate.
+
+    No `-q`: `pyproject.toml`'s `addopts` already declares it, and a second one stacks to `-qq`, which deletes pytest's
+    summary line - the pass count and duration this lane exists to report.
     """
     steps = list(LINT_STEPS)
     if include_docs:
         steps.extend(("version chain", (tool,)) for tool in DOC_TOOLS)
     if patterns:
-        expression = " or ".join(patterns)
+        expression = pytest_expression(patterns)
         steps.append(
-            (f"pytest -k {expression}", ("-m", "pytest", "-q", "-p", "no:cacheprovider", "--no-cov", "-k", expression))
+            (f"pytest -k {expression}", ("-m", "pytest", "-p", "no:cacheprovider", "--no-cov", "-k", expression))
         )
     return steps
 
@@ -136,13 +230,33 @@ def step_command(interpreter: str, cmd: Sequence[str]) -> list[str]:
 
 
 def interpreter_note(interpreter: str) -> str:
-    """Say which interpreter was picked and why, so the choice is a printed fact rather than a hidden one."""
-    if interpreter == sys.executable:
-        return (
-            f"interpreter: {sys.executable} — no {VENV_DIR}/bin/python in this checkout, "
-            f"so the invoking interpreter is used unchanged"
-        )
-    return f"interpreter: {interpreter} — this checkout's {VENV_DIR}; invoked through {sys.executable}"
+    """Say which interpreter was picked and why, so the choice is a printed fact rather than a hidden one.
+
+    The branch is `step_interpreter`'s own test - does this checkout's venv python exist - and not a comparison against
+    `sys.executable`. That distinction is the bug this sentence used to get wrong: run the lane *through* the venv
+    (`make fast`, which resolves `PY` to `.venv/bin/python`) and the two paths are equal, so the note printed "no
+    .venv/bin/python in this checkout" about a checkout that demonstrably has one, while naming it as the interpreter. A
+    reader comparing this run with a CI container could conclude only that the line meant nothing, which is what it did.
+    """
+    if VENV_PYTHON.exists():
+        same = "the same interpreter" if interpreter == sys.executable else "a different one"
+        return f"interpreter: {interpreter} — this checkout's {VENV_DIR}; invoked through {sys.executable} ({same})"
+    return (
+        f"interpreter: {sys.executable} — no {VENV_DIR}/bin/python in this checkout, "
+        f"so the invoking interpreter is used unchanged"
+    )
+
+
+def emit(line: str, *, to_stderr: bool = False) -> None:
+    """Print one line of the lane's own report and flush it immediately.
+
+    Python block-buffers stdout whenever it is not a terminal. Redirect the lane to a file with `> log 2>&1` and
+    stderr - unbuffered - arrives ahead of the status lines that caused it: measured on this tree, `FAILED ruff
+    check` and the skipped-steps line printed *before* `[exit 1] ruff check (0.06s)`, so a reader of a merged log
+    sees the conclusion before the step that produced it. Flushing each line makes the file read in the order
+    things happened.
+    """
+    print(line, file=sys.stderr if to_stderr else sys.stdout, flush=True)
 
 
 def run(interpreter: str, args: Sequence[str]) -> tuple[int, float]:
@@ -163,65 +277,83 @@ def describe(returncode: int) -> str:
         return "ok"
     if returncode == 5:
         return "NO TESTS RAN - the -k pattern matched nothing, so this proves nothing"
+    if returncode == 4:
+        return "BAD EXPRESSION - pytest could not parse the -k expression, so no test ran"
     return f"exit {returncode}"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the fast-lane gates: lint, doc gates, targeted pytest.")
     parser.add_argument(
-        "patterns", nargs="*", help="pytest -k expression(s), ORed; omit with --dry-run to see the plan"
+        "patterns",
+        nargs="*",
+        help="test keywords (ORed) or a pytest -k expression using or/and/not; omit with --dry-run to see the plan",
     )
     parser.add_argument("--dry-run", action="store_true", help="print the steps without running them")
     parser.add_argument("--no-docs", action="store_true", help=f"skip {' and '.join(DOC_TOOLS)}")
     args = parser.parse_args(argv)
 
     if not args.patterns and not args.dry_run:
-        print("no -k pattern given; pass one, or use --dry-run to see what the fast lane runs", file=sys.stderr)
+        emit("no -k pattern given; pass one, or use --dry-run to see what the fast lane runs", to_stderr=True)
         return 2
+
+    # Rejected before any step runs. The alternative is paying for scoped ruff and the version chain and only then
+    # handing pytest an expression it refuses with exit 4 - a mistake in the command found at its most expensive moment.
+    words = flatten_patterns(args.patterns)
+    if args.patterns:
+        problem = validate_expression(words)
+        if problem is not None:
+            emit(f"bad -k expression: {problem}", to_stderr=True)
+            emit(
+                f"as read by this lane: {pytest_expression(args.patterns)!r} "
+                f"(bare keywords are ORed; or/and/not are passed to pytest as written)",
+                to_stderr=True,
+            )
+            return 2
 
     steps = build_steps(args.patterns, include_docs=not args.no_docs)
     interpreter = step_interpreter()
 
     if args.dry_run:
-        print(interpreter_note(interpreter))
-        print("fast lane would run:")
+        emit(interpreter_note(interpreter))
+        emit("fast lane would run:")
         for name, cmd in steps:
-            print(f"  {' '.join(step_command(interpreter, cmd))}   # {name}")
-        print("deliberately not in the fast lane (commit/release only):")
+            emit(f"  {' '.join(step_command(interpreter, cmd))}   # {name}")
+        emit("deliberately not in the fast lane (commit/release only):")
         for name in COMMIT_ONLY_STEPS:
-            print(f"  {name}")
+            emit(f"  {name}")
         return 0
 
-    print(interpreter_note(interpreter))
+    emit(interpreter_note(interpreter))
     total = 0.0
     for index, (name, cmd) in enumerate(steps):
         code, elapsed = run(interpreter, cmd)
         total += elapsed
         status = describe(code)
-        print(f"[{status}] {name} ({elapsed:.2f}s)")
+        emit(f"[{status}] {name} ({elapsed:.2f}s)")
         if code == 0:
             continue
 
         # What it cost, then what it found: the ordering `make gate` already gives a reader. The steps after the
         # failure are named as unproven rather than quietly omitted from the report.
-        print(f"fast lane total: {total:.2f}s")
-        print(f"FAILED {name}: {status}", file=sys.stderr)
+        emit(f"fast lane total: {total:.2f}s")
+        emit(f"FAILED {name}: {status}", to_stderr=True)
         skipped = [step for step, _ in steps[index + 1 :]]
         if skipped:
-            print(
+            emit(
                 f"stopped at the first failing step: {len(skipped)} later step(s) never ran "
                 f"({', '.join(skipped)}) - unproven, not passed",
-                file=sys.stderr,
+                to_stderr=True,
             )
-        print(
+        emit(
             "the fast lane is the floor, not the whole gate set: mypy, coverage and (when a visible string or status "
             "code moved) tools/e2e_harness.py still runs before a commit - see the Makefile gate target",
-            file=sys.stderr,
+            to_stderr=True,
         )
         return 1
 
-    print(f"fast lane total: {total:.2f}s")
-    print("fast lane clean. Full gates remain required at commit.")
+    emit(f"fast lane total: {total:.2f}s")
+    emit("fast lane clean. Full gates remain required at commit.")
     return 0
 
 

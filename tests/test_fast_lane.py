@@ -30,11 +30,19 @@ failing lane takes; it asserts which commands were attempted.
 
 from __future__ import annotations
 
+import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 import fast_lane
+
+#: The two places that spell a pytest invocation besides this tool. Read as data for the same reason `test_packaging.py`
+#: reads `app.py`: these are promises about a command line, and nothing renders a command line.
+BUILD_ROOT = Path(__file__).resolve().parent.parent
+PYPROJECT = BUILD_ROOT / "pyproject.toml"
+MAKEFILE = BUILD_ROOT / "Makefile"
 
 
 # --------------------------------------------------------------------------------------------- what the lane runs
@@ -223,20 +231,41 @@ def test_step_command_prefixes_the_chosen_interpreter_to_every_step() -> None:
     )
 
 
-def test_the_interpreter_choice_is_printed_rather_than_left_inferred() -> None:
-    """Whichever side `step_interpreter` took, `interpreter_note` says so — including that it took one.
+def test_the_interpreter_choice_is_printed_rather_than_left_inferred(monkeypatch, tmp_path) -> None:
+    """Whichever side `step_interpreter` took, `interpreter_note` says so - and reads it from the same fact.
 
-    A silent switch is its own failure mode: a reader comparing two runs (this checkout versus CI) has to be able to see
-    that they ran under different interpreters. The phrasing is needle-asserted for the same reason as the exit-5
-    message: rewording must not drop the reason.
+    A silent switch is its own failure mode: a reader comparing two runs (this checkout versus CI) has to be able
+    to see that they ran under different interpreters. The phrasing is needle-asserted for the same reason as the
+    exit-5 message: rewording must not drop the reason.
+
+    Both branches are reached by moving `VENV_PYTHON`, because that existence test is what `step_interpreter`
+    actually branches on. Passing an interpreter path to assert a branch was the old shape of this test, and it
+    asserted nothing: calling `interpreter_note(sys.executable)` proved only that the argument equalled itself,
+    which is why it stayed green against a note that reported "no .venv/bin/python in this checkout" about a
+    checkout running one.
     """
-    venv_side = fast_lane.interpreter_note("/checkout/.venv/bin/python")
-    assert "interpreter:" in venv_side
-    assert ".venv" in venv_side
-    assert sys.executable in venv_side, "the invoking interpreter is not named when the lane switches away from it"
+    present = tmp_path / fast_lane.VENV_DIR / "bin" / "python"
+    present.parent.mkdir(parents=True)
+    present.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
 
+    monkeypatch.setattr(fast_lane, "VENV_PYTHON", present)
+
+    switched = fast_lane.interpreter_note(str(present))
+    assert "interpreter:" in switched
+    assert ".venv" in switched
+    assert sys.executable in switched, "the invoking interpreter is not named when the lane switches away from it"
+    assert "used unchanged" not in switched, switched
+    assert "a different one" in switched, switched
+
+    same = fast_lane.interpreter_note(sys.executable)
+    assert ".venv" in same, same
+    assert "used unchanged" not in same, f"the note claims no venv while naming one as the interpreter: {same}"
+    assert "the same interpreter" in same, same
+
+    monkeypatch.setattr(fast_lane, "VENV_PYTHON", tmp_path / "absent" / "bin" / "python")
     fallback = fast_lane.interpreter_note(sys.executable)
     assert "used unchanged" in fallback, f"the fallback is not stated: {fallback}"
+    assert sys.executable in fallback, fallback
 
 
 def test_pytest_exit_5_is_reported_as_no_tests_rather_than_a_failure() -> None:
@@ -337,6 +366,138 @@ def test_pytest_exit_5_still_fails_the_lane_without_claiming_skipped_steps(monke
     assert "NO TESTS RAN" in err, err
     assert "stopped at the first failing step" not in err, f"a skip notice named steps that do not exist: {err}"
     assert len(attempted) == len(fast_lane.LINT_STEPS) + len(fast_lane.DOC_TOOLS) + 1, attempted
+
+
+def test_no_pytest_step_restates_the_q_that_pyproject_already_declares() -> None:
+    """`-q` is declared once in `pyproject.toml`, and no invocation of this lane adds a second one.
+
+    Two `-q` flags stack to `-qq`, which suppresses pytest's summary line entirely: no pass count, no duration.
+    Measured on this tree, `make test K=csr_generate` printed dots and `[100%]` and nothing else, while the same
+    file run without the extra flag answered `28 passed in 17.74s`. A fast lane that cannot print how many tests
+    it ran has thrown away the one number that tells a reader the pattern matched something real - which is the
+    same evidence exit 5 exists to protect.
+
+    Read as data over `build_steps` plus the two lines that spell the project's other pytest invocations, for the reason
+    `test_packaging.py` gives for reading `app.py`: these are promises about a command line that nothing renders.
+    """
+    for patterns in (["sign"], ["csr", "nav"], ["a", "or", "b"]):
+        for name, cmd in fast_lane.build_steps(patterns, include_docs=True):
+            if not any("pytest" in token for token in cmd):
+                continue
+            assert "-q" not in cmd, f"{name!r} stacks a second -q onto addopts' own: {cmd}"
+
+    addopts = re.search(r'^addopts = "([^"]*)"', PYPROJECT.read_text(encoding="utf-8"), re.MULTILINE)
+    assert addopts is not None, "pytest addopts is not declared where this test expects it"
+    assert addopts.group(1).split().count("-q") == 1, (
+        f"the quiet flag must be declared exactly once: {addopts.group(1)!r}"
+    )
+
+    # Every recipe line in the Makefile that runs pytest with a -k expression. `test:` is the only target that does
+    # #today, and scanning the file rather than naming the target means a second targeted run added later is caught
+    # #by the same assertion instead of needing its own.
+    invocations = [
+        line.strip()
+        for line in MAKEFILE.read_text(encoding="utf-8").splitlines()
+        if line.startswith("\t") and "pytest" in line and "-k" in line
+    ]
+    assert invocations, "no targeted pytest invocation found in the Makefile"
+    for line in invocations:
+        assert " -q " not in f" {line} ", f"the Makefile restates -q on top of addopts' own: {line}"
+
+
+def test_keywords_are_ored_but_a_written_expression_is_passed_through() -> None:
+    """Two spellings of the same request, both honoured, neither mangled.
+
+    `make fast K="csr_generate ca_page"` reaches this tool as two words and pytest accepts no space-separated form
+    (MEASURED: `-k "csr_generate ca_page"` exits 4), so bare keywords are ORed here. `make fast K="a or b"` also
+    arrives as words - make splits on whitespace - and its operators belong to pytest, not to this tool. Before
+    the fix both were joined the same way, turning that second spelling into `-k "a or or or b"`, which pytest
+    refuses with exit 4 after the lane has already paid for lint and the version chain.
+
+    An operator token in the argument list is therefore read as "the caller wrote an expression", and the words
+    are rejoined with single spaces so the expression reaches pytest as written. Without an operator the keywords
+    are ORed, because that is the only form pytest accepts for a list of names.
+    """
+    keywords = fast_lane.pytest_expression(["csr_generate", "ca_page"])
+    assert keywords == "csr_generate or ca_page", keywords
+
+    written = fast_lane.pytest_expression(["csr_generate", "or", "ca_page"])
+    assert written == "csr_generate or ca_page", written
+
+    assert "or or" not in fast_lane.pytest_expression(["a", "or", "b"]), "the doubled-operator defect is back"
+
+    both = fast_lane.pytest_expression(["csr_sign", "and", "not", "csr_generate"])
+    assert both == "csr_sign and not csr_generate", both
+
+
+def test_a_malformed_expression_is_a_usage_error_before_any_step_runs(monkeypatch) -> None:
+    """`a or or b` is a mistake in the command, and it costs nothing to say so.
+
+    Adjacent operators are what the old join produced from `K="a or b"`. Catching them here means the lane exits 2
+    with an explanation instead of running scoped ruff and the version chain and only then handing pytest an
+    expression it refuses - a usage error discovered at the most expensive possible moment.
+    """
+    attempted = _fake_run(monkeypatch, ["a", "or", "or", "b"], {})
+
+    assert fast_lane.main(["a", "or", "or", "b"]) == 2
+    assert attempted == [], f"a malformed pattern paid for gates before being rejected: {attempted}"
+
+    for bad in (["or", "sign"], ["sign", "and"], ["sign", "not"]):
+        _fake_run(monkeypatch, bad, {})
+        assert fast_lane.main(bad) == 2, bad
+
+
+def test_pytest_exit_4_is_reported_as_a_refused_expression(monkeypatch, capsys) -> None:
+    """Exit 4 is pytest saying it could not parse the expression - a third code a wrapper must not flatten.
+
+    Exit 5 means the pattern matched nothing; exit 4 means it was never a valid pattern at all. Both read as
+    "tests failed" to a wrapper that only distinguishes zero from non-zero, and both hide the one clue a reader
+    can act on: the expression, not the tests, is what needs fixing.
+    """
+    assert "EXPRESSION" in fast_lane.describe(4)
+    assert fast_lane.describe(4) != fast_lane.describe(1)
+
+    _fake_run(monkeypatch, ["csr_generate"], {"pytest -k csr_generate": 4})
+    assert fast_lane.main(["csr_generate"]) == 1
+    err = capsys.readouterr().err
+    assert "EXPRESSION" in err, err
+
+
+def test_the_lane_flushes_its_own_lines_so_a_merged_log_reads_in_order(tmp_path: Path) -> None:
+    """When stdout and stderr land in one file, the lane's own report must not arrive last.
+
+    Redirected to a file, Python block-buffers stdout while stderr stays unbuffered. Measured on this tree before
+    the fix, `tools/fast_lane.py csr_generate ca_page > log 2>&1` put the `FAILED ruff check` line and the
+    skipped-steps line *before* `[exit 1] ruff check (0.06s)` - so a reader of a merged log sees the conclusion
+    before the step that caused it, and the interpreter line and total land in the middle of the findings.
+    Flushing each printed line makes the file read in the order things happened.
+
+    Spawned as a subprocess with both streams merged into one file, because that buffering is a property of real
+    streams: an in-process `capsys` capture cannot reproduce it. `fast_lane.run` is replaced inside the child so
+    no gate runs, and `monkeypatch` is deliberately absent: patching this process would not change the child's.
+    """
+    script = (
+        "import sys; sys.path.insert(0, 'tools'); import fast_lane\n"
+        "fast_lane.run = lambda interpreter, args: (1, 0.01)\n"
+        "sys.exit(fast_lane.main(['csr_generate']))\n"
+    )
+    log = tmp_path / "lane.log"
+    with log.open("w", encoding="utf-8") as handle:
+        completed = subprocess.run(
+            [sys.executable, "-c", script],
+            cwd=fast_lane.BUILD_ROOT,
+            stdout=handle,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+
+    assert completed.returncode == 1
+    text = log.read_text(encoding="utf-8")
+    status = text.index("[exit 1] ruff check")
+    finding = text.index("FAILED ruff check")
+    assert status < finding, f"the report reads backwards in a merged log:\n{text}"
+    assert text.index("interpreter:") < status, text
+    assert text.index("fast lane total:") < finding, text
 
 
 def test_a_clean_lane_runs_every_step_and_still_reports_zero(monkeypatch, capsys) -> None:

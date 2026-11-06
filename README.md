@@ -287,6 +287,13 @@ MEASURED: exit 0, 55 passed in 3.29s and 3.97s across two runs (4,971 ms and 5,6
 minutes plus on this box. A docs-only commit still owes `make gate` once;
 `make docs` proves those two facts, not that the suite is green.
 
+`K=` takes either form. Bare keywords are ORed (`make fast K="csr_generate ca_page"`) because pytest accepts no space-separated
+list of names; an expression written with `or`, `and` or `not` is passed to pytest unchanged (`make fast K="csr_sign and not
+csr_generate"`). An expression that cannot be valid — a leading operator, an operator at the end, two operators side by side —
+exits 2 before any step runs rather than being discovered by pytest after lint and the version chain have been paid for. The
+quiet flag is declared once, in `addopts`; neither target restates it, because a second `-q` stacks to `-qq` and deletes
+pytest's summary line — the pass count that tells you the pattern matched something.
+
 `tools/harness_parity.py` and `tools/harness_ledger.py` are gone with the two harness logs they compared: with a single harness
 there is nothing left to line up heading for heading, and the ledger it generated from a log is now written by the harness itself.
 The harness is not a separate comparison run either — `make e2e` is the last step of `make gate`, so a commit does owe it.

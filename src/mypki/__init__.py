@@ -13,7 +13,7 @@ for it, and `tools/check_version.py` proves all four agree. Bump this line, noth
 
 from __future__ import annotations
 
-__version__ = "0.7.1"
+__version__ = "0.7.2"
 
 from .app import create_app
 from .config import Settings, get_settings

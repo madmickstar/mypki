@@ -27,7 +27,7 @@ check*, which is never a pass. A section below is written **when its release is 
 that has not shipped is exactly what `check_version.py` reports as drift, because it reads to a user as a promise about a
 release that does not exist.
 
-## [Unreleased]
+## [0.7.2] - 2026-11-06
 
 ### Changed
 
@@ -555,7 +555,8 @@ only the per-release *files* are gone.
 - **[0.2.0]** - 2026-10-28 - `bc0031b^:docs/history/0.2.0.md`
 - **[0.1.0]** - 2026-10-26 - `bc0031b^:docs/history/0.1.0.md`
 
-[Unreleased]: https://github.com/madmickstar/mypki/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/madmickstar/mypki/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/madmickstar/mypki/releases/tag/v0.7.2
 [0.7.1]: https://github.com/madmickstar/mypki/releases/tag/v0.7.1
 [0.7.0]: https://github.com/madmickstar/mypki/releases/tag/v0.7.0
 [0.6.0]: https://github.com/madmickstar/mypki/releases/tag/v0.6.0

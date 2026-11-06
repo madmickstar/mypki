@@ -20,12 +20,19 @@ The two exit codes are asserted by calling `main` directly rather than by spawni
 `main(["--dry-run"])` both decide before any subprocess starts, so these tests cost milliseconds and cannot recurse.
 Exit 2 is the usage error, and it matters for the same reason exit 5 does — a wrapper that reads "no arguments" as a
 successful run has silently run no gates at all.
+
+The short-circuit tests take the same route one step further: they monkeypatch `fast_lane.run` so every step reports a
+verdict without spawning anything. That is the only way to assert "the pytest step never started" from inside pytest
+without nesting a real suite inside the suite that is checking it, and it is also what makes the assertion exact — a
+recorded call list says which steps ran, where timing alone could only suggest it. Nothing here measures how long a
+failing lane takes; it asserts which commands were attempted.
 """
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 import fast_lane
 
@@ -242,3 +249,125 @@ def test_pytest_exit_5_is_reported_as_no_tests_rather_than_a_failure() -> None:
     assert "NO TESTS RAN" in fast_lane.describe(5)
     assert fast_lane.describe(0) == "ok"
     assert fast_lane.describe(1) == "exit 1"
+
+
+# --------------------------------------------------------------------- where a failing lane stops
+def _fake_run(monkeypatch, patterns: list[str], failures: dict[str, int]) -> list[str]:
+    """Replace `fast_lane.run` with a recorder: no subprocess is spawned, and every attempted step is named.
+
+    Names come from `build_steps(patterns)` rather than from a lookup inside the tool, so this asserts against the same
+    data the rest of the file asserts over and `fast_lane.py` gains nothing that only a test would call. `main` iterates
+    those steps in build order and calls `run` once per step, so consuming the list positionally is exact rather than a
+    guess; an attempt beyond the planned steps gets a name no failure map can match, and the length assertions below are
+    what catch that.
+    """
+    planned = [name for name, _ in fast_lane.build_steps(patterns, include_docs=True)]
+    attempted: list[str] = []
+
+    def fake_run(interpreter: str, args: Any) -> tuple[int, float]:
+        index = len(attempted)
+        name = planned[index] if index < len(planned) else f"<step {index} not in the plan: {list(args)}>"
+        attempted.append(name)
+        return failures.get(name, 0), 0.01
+
+    monkeypatch.setattr(fast_lane, "run", fake_run)
+    return attempted
+
+
+def test_a_failing_lint_step_stops_the_lane_before_pytest_is_attempted(monkeypatch) -> None:
+    """The defect this pins, in one line: a 0.06s lint failure used to be followed by a 25s pytest run anyway.
+
+    Measured before the fix, with an over-long comment injected into `app.py`:
+    `[exit 1] ruff check (0.06s)` then `[ok] pytest -k csr_generate or ca_page (24.84s)`, total 25.06s, exit 1.
+    After it, the same probe exits 1 having spent 0.06s, and `pytest` is absent from the attempted list entirely.
+
+    What matters is not the saving but what a reader can conclude: a lane that keeps going hands back a report where
+    "tests passed" and "tests never ran" are indistinguishable unless you read every line's status. Stopping makes the
+    absence explicit instead of something you have to notice.
+    """
+    attempted = _fake_run(monkeypatch, ["csr_generate", "ca_page"], {"ruff check": 1})
+
+    assert fast_lane.main(["csr_generate", "ca_page"]) == 1
+    assert attempted == ["ruff check"], f"steps ran after a failing one: {attempted}"
+    assert not any("pytest" in name for name in attempted), attempted
+
+
+def test_the_steps_that_never_ran_are_named_as_unproven_rather_than_left_out(monkeypatch, capsys) -> None:
+    """Stopping is only half the fix; the other half is saying what was not measured.
+
+    A bare `[exit 1] ruff check` line tells a reader the lint broke. It does not tell them no test of their edit ran,
+    which is the fact they need before deciding whether to trust anything about the run. The needles are asserted in
+    order: that it stopped, how many steps were skipped, their names, and that unrun means unproven rather than passed.
+    """
+    _fake_run(monkeypatch, ["csr_generate"], {"ruff check": 1})
+
+    assert fast_lane.main(["csr_generate"]) == 1
+    err = capsys.readouterr().err
+    assert "stopped at the first failing step" in err, err
+    assert "never ran" in err, err
+    assert "unproven, not passed" in err, err
+    assert "pytest -k csr_generate" in err, f"the skipped pytest step is not named: {err}"
+
+
+def test_a_failing_version_chain_stops_pytest_from_running(monkeypatch) -> None:
+    """Short-circuiting is a rule about the lane, not a property of lint.
+
+    The version chain sits between lint and pytest, and it is the cheapest gate that reads the version chain at all, so
+    a drift failure there is already a verdict on the commit. Running the targeted suite after it buys a number nobody
+    can act on while the drift stays unfixed.
+    """
+    attempted = _fake_run(monkeypatch, ["csr_generate"], {"version chain": 1})
+
+    assert fast_lane.main(["csr_generate"]) == 1
+    assert attempted == ["ruff check", "ruff format --check", "version chain"], attempted
+    assert not any("pytest" in name for name in attempted), attempted
+
+
+def test_pytest_exit_5_still_fails_the_lane_without_claiming_skipped_steps(monkeypatch, capsys) -> None:
+    """A lane that fails on its last step must not report skipping steps it never had.
+
+    pytest is the final step, so there is nothing after it to name. Asserting the absence of the skip notice here is
+    what keeps that notice honest when it does appear: it means "these specific steps were not attempted", not a
+    closing line printed on every failure.
+    """
+    attempted = _fake_run(monkeypatch, ["csr_generate"], {"pytest -k csr_generate": 5})
+
+    assert fast_lane.main(["csr_generate"]) == 1
+    err = capsys.readouterr().err
+    assert "NO TESTS RAN" in err, err
+    assert "stopped at the first failing step" not in err, f"a skip notice named steps that do not exist: {err}"
+    assert len(attempted) == len(fast_lane.LINT_STEPS) + len(fast_lane.DOC_TOOLS) + 1, attempted
+
+
+def test_a_clean_lane_runs_every_step_and_still_reports_zero(monkeypatch, capsys) -> None:
+    """The short-circuit must not become a lane that stops after the first step regardless of outcome.
+
+    Every step green is the common case and the one `make fast` exists to make cheap: all four steps attempted, exit 0,
+    no failure text on stderr. Without this assertion a loop that returns after its first iteration would pass every
+    other test in this section.
+    """
+    attempted = _fake_run(monkeypatch, ["csr_generate"], {})
+
+    assert fast_lane.main(["csr_generate"]) == 0
+    assert len(attempted) == len(fast_lane.LINT_STEPS) + len(fast_lane.DOC_TOOLS) + 1, attempted
+    out = capsys.readouterr()
+    assert "fast lane clean" in out.out, out.out
+    assert "FAILED" not in out.err, out.err
+
+
+def test_the_total_is_printed_once_whether_the_lane_passes_or_stops(monkeypatch, capsys) -> None:
+    """`fast lane total:` appears exactly once per run, on the passing path and the failing one.
+
+    Moving the print inside the failure branch is the easy edit that loses the cost of a stopped run, and a stopped run
+    is exactly the case where knowing it cost 0.06s rather than 25s is the point. The failing path prints the total
+    before the findings, so what it cost and what it found arrive in the order `make gate` already gives a reader.
+    """
+    _fake_run(monkeypatch, ["csr_generate"], {"ruff check": 1})
+    assert fast_lane.main(["csr_generate"]) == 1
+    failed_out = capsys.readouterr().out
+    assert failed_out.count("fast lane total:") == 1, failed_out
+
+    _fake_run(monkeypatch, ["csr_generate"], {})
+    assert fast_lane.main(["csr_generate"]) == 0
+    clean_out = capsys.readouterr().out
+    assert clean_out.count("fast lane total:") == 1, clean_out

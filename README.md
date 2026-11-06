@@ -262,6 +262,7 @@ Out of scope by design, stated rather than left to be discovered:
 pip install -e ".[dev]"
 make gate          # lint + types + version chain + full suite with coverage
 make fast K=sign   # while editing: cheap subset, targeted tests only
+make docs          # a change that touches only .md: version chain + the two doc-aware test files
 make zip           # release artifact (run last — a zip is a copy of what was gated)
 pre-commit run --all-files
 ```
@@ -272,7 +273,19 @@ in `[tool.coverage.report]`, rather than retyped onto each invocation.
 
 `make fast K=KEYWORD` (or `python3 tools/fast_lane.py KEYWORD`) runs the cheap half — scoped ruff, the version chain and a
 targeted `pytest -k` — and leaves mypy, coverage measurement and the end-to-end harness to `make gate`, which is what it
-owes either way.
+owes either way. It stops at the first step that fails: a lint error found in 0.06s is not followed by a 25s test run
+against a tree that already failed, which is the same short-circuit `make gate` has always had.
+
+`make docs` is the cheap half for a change that touches only `.md` files — the version chain plus
+`tests/test_packaging.py` and `tests/test_version.py`, coverage off. It exists because `make fast` refuses to run without
+a `-k` pattern and a documentation edit has no code keyword to put in one, which left the full suite as the only
+documented option for a prose change. Two files are the whole of it because no test reads doc **content**: an AST scan of
+`tests/*.py` for `read_text`, `read_bytes` and `open` calls touching a `.md` path returns zero files. What survives is two
+references to doc *paths* — `REQUIRED_INCLUDES` in `test_packaging.py` asserts that `README.md`, `CHANGELOG.md` and
+`docs/page-map.md` are in the sdist and exist on disk, and `test_version.py` asserts the CHANGELOG carries this version.
+MEASURED: exit 0, 55 passed in 3.29s and 3.97s across two runs (4,971 ms and 5,694 ms wall) — against a `make gate` that runs four
+minutes plus on this box. A docs-only commit still owes `make gate` once;
+`make docs` proves those two facts, not that the suite is green.
 
 `tools/harness_parity.py` and `tools/harness_ledger.py` are gone with the two harness logs they compared: with a single harness
 there is nothing left to line up heading for heading, and the ledger it generated from a log is now written by the harness itself.

@@ -36,12 +36,26 @@ A SECOND INVOCATION BUG, AND THE NASTIER ONE
     visible instead of inferred. With no `.venv` — a CI container that installs into the system interpreter — the
     invoking interpreter is used unchanged, and the printed line says that too rather than leaving it assumed.
 
+STOPS AT THE FIRST FAILING STEP
+    Steps are ordered cheapest-first, so an early failure is information about everything later. `make gate` has
+    always short-circuited this way (lint -> types -> version -> cov -> e2e, and a lint break ends the run); a lane
+    that kept going was the inconsistent half of one gate set. Until now it did keep going: with an over-long comment
+    injected into `app.py`, the lane printed `[exit 1] ruff check (0.06s)` and then ran
+    `pytest -k csr_generate or ca_page` for 24.84s anyway, finishing at 25.06s to report a failure that had already
+    been known in 60ms. That is this file's own argument inverted: spending minutes on a tree a 0.06s check had
+    already refused.
+
+    The steps it did not reach are named as *not run* rather than left unstated, because "ruff failed" and "no test
+    ever ran" are different facts and a reader has to be able to tell which one they are holding. Fix the first
+    failure and re-run: the later steps are uncollected evidence, not passed evidence.
+
 USAGE
     python3 tools/fast_lane.py KEYWORD [KEYWORD...]   # lint + version chain + pytest -k KEYWORD
     python3 tools/fast_lane.py --dry-run              # print the plan, run nothing
     python3 tools/fast_lane.py --no-docs              # skip the version-chain gate
 
-Exit codes: 0 all steps passed · 1 a step failed · 2 usage error (no pattern and not --dry-run).
+Exit codes: 0 all steps passed · 1 a step failed (its reason printed, later steps not run) · 2 usage error
+(no pattern and not --dry-run).
 """
 
 from __future__ import annotations
@@ -180,25 +194,33 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print(interpreter_note(interpreter))
     total = 0.0
-    failures: list[str] = []
-    for name, cmd in steps:
+    for index, (name, cmd) in enumerate(steps):
         code, elapsed = run(interpreter, cmd)
         total += elapsed
         status = describe(code)
         print(f"[{status}] {name} ({elapsed:.2f}s)")
-        if code != 0:
-            failures.append(f"{name}: {status}")
+        if code == 0:
+            continue
 
-    print(f"fast lane total: {total:.2f}s")
-    if failures:
-        for line in failures:
-            print(f"FAILED {line}", file=sys.stderr)
+        # What it cost, then what it found: the ordering `make gate` already gives a reader. The steps after the
+        # failure are named as unproven rather than quietly omitted from the report.
+        print(f"fast lane total: {total:.2f}s")
+        print(f"FAILED {name}: {status}", file=sys.stderr)
+        skipped = [step for step, _ in steps[index + 1 :]]
+        if skipped:
+            print(
+                f"stopped at the first failing step: {len(skipped)} later step(s) never ran "
+                f"({', '.join(skipped)}) - unproven, not passed",
+                file=sys.stderr,
+            )
         print(
             "the fast lane is the floor, not the whole gate set: mypy, coverage and (when a visible string or status "
             "code moved) tools/e2e_harness.py still runs before a commit - see the Makefile gate target",
             file=sys.stderr,
         )
         return 1
+
+    print(f"fast lane total: {total:.2f}s")
     print("fast lane clean. Full gates remain required at commit.")
     return 0
 

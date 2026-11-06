@@ -31,6 +31,48 @@ release that does not exist.
 
 ### Changed
 
+- **`make docs`: a cheap target for a change that touches only `.md`.** Until now the Makefile offered `make fast K=<expr>`
+  or `make gate`, and `make fast` refuses to run without a `-k` pattern (exit 2, "no -k pattern given") — which a prose edit
+  has nothing to put in. The only documented option left for a documentation change was therefore the full suite with coverage
+  (`make gate`, four minutes plus on this 2-CPU box, where its duration moves run to run) for an edit that owes about five
+  seconds. `make docs` runs the version chain plus `tests/test_packaging.py tests/test_version.py` with coverage off —
+  MEASURED on this tree: exit 0, 55 passed, self-reported **3.29s and 3.97s across two runs** (4,971 ms and 5,694 ms wall). Both
+  runs are quoted because one duration on this box is not reproducible enough to quote as a single number.
+  Those two files are the whole of it because no test reads doc **content**: an AST scan of `tests/*.py` for `read_text`,
+  `read_bytes` and `open` calls touching a `.md` path returns **zero** files, the stronger form of the `grep -rn "read_text()"`
+  check that only matched one spelling. What survives is two references to doc *paths* — `test_packaging.py`'s
+  `REQUIRED_INCLUDES` asserts `README.md`, `CHANGELOG.md` and `docs/page-map.md` are in the sdist and exist on disk, and
+  `test_version.py` asserts the CHANGELOG carries this version. Prose itself has been unpolicied here since `bc0031b` deleted
+  `tools/check_docs.py`, `tools/check_docstrings.py` and `tests/test_docstrings.py`.
+  Coverage is off because it cannot be on: `.venv/bin/python -m pytest --cov=mypki tests/test_packaging.py tests/test_version.py`
+  prints `55 passed` and then exits **1** on `TOTAL 3022 1736 43%`, because `fail_under = 85` applies to any `--cov` run
+  whatever subset executed. A docs-only commit still owes `make gate` once; `make docs` proves those two facts, not that the
+  suite is green. Verified by breaking the tree rather than by reasoning about it: with `README.md` moved out of the checkout,
+  the full suite fails **3** tests and this subset fails the same 3 in 4.10s instead of 247s —
+  `test_every_include_entry_exists_on_disk[README.md]`, `test_no_include_entry_can_reach_anything_forbidden[README.md]` and
+  `test_no_key_material_exists_anywhere_the_include_entries_walk`, all from `covered_paths()` raising at
+  `tests/test_packaging.py:136` rather than returning an empty list.
+- **`tools/fast_lane.py` now stops at the first failing step.** It did not before, and that is how a 0.06s lint failure came to
+  be followed by a 24.84s test run: with an over-long comment injected into `src/mypki/app.py`, the lane reported
+  `[exit 1] ruff check (0.06s)` and then ran `pytest -k csr_generate or ca_page` anyway, finishing at **25.06s** to report a
+  failure that had been known in 60 ms. The same probe after the fix exits 1 with `fast lane total: 0.06s` (**133 ms wall**),
+  and pytest is never attempted. `make gate` has always short-circuited (lint -> types -> version -> cov -> e2e; the same
+  injected break ends it in 85 ms with pytest never started), so this was one lane of one gate set disagreeing with the other.
+  The steps a stopped run did not reach are now printed as skipped — `stopped at the first failing step: 3 later step(s) never
+  ran (ruff format --check, version chain, pytest -k csr_generate or ca_page) - unproven, not passed` — because "the lint
+  broke" and "no test of this edit ever ran" are different facts, and a report that omits the second leaves a reader to notice
+  its absence. Exit codes are unchanged: 0 all steps passed, 1 a step failed, 2 usage error.
+  Pinned by **6** new tests in `tests/test_fast_lane.py`, which previously pinned no short-circuit behaviour at all. They
+  monkeypatch `fast_lane.run` into a recorder so the assertion is over *which commands were attempted* rather than over timing,
+  and nothing nests pytest inside pytest. That pinning was checked against the code it replaces: new tests against HEAD's
+  `fast_lane.py` fail **3** (`test_a_failing_lint_step_stops_the_lane_before_pytest_is_attempted`,
+  `test_the_steps_that_never_ran_are_named_as_unproven_rather_than_left_out`,
+  `test_a_failing_version_chain_stops_pytest_from_running`) and pass against the fixed one, 22 passed in 0.14s.
+  `.github/workflows/ci.yml` is deliberately untouched in this commit: its matrix (2 OS × 4 Python = 8 legs, each
+  `python -m pytest --cov=mypki --cov-report=xml`) still runs on docs-only pushes. Path-filtering it was considered and held
+  back — a naive `paths-ignore` would skip exactly the `REQUIRED_INCLUDES` assertions above, and no runner here can measure what
+  a filtered matrix would actually cost or prove.
+
 - **GUI pass on `/csr/generate` and `/ca`, to the operator's brief.** `/csr/generate` is retitled *Generate CSR and Private
   Key* with "Key is only shown once, it is not stored." under it; its Subject and Key sections are now a blue
   `.section-heading` outside a `.card.settings-section` — `/settings`' styling, the `<fieldset>`/`<legend>` pair it had carried

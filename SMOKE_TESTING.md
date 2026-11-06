@@ -212,14 +212,24 @@ max-width: none; }` (the box itself), `form.inspect-form button.save-settings { 
 `class="settings-form stacked inspect-form"` exactly once, because a CSS rule whose class is missing from the markup styles nothing. The GET
 itself is not an assertion; only its class count is. **MEASURED on this build: `GET /static/style.css` answers 200 with
 28,827 bytes** (`content-length` and the body length agree; sha256 `3d7a609619970d…`; `wc -c src/mypki/static/style.css`
-is the same 28,827 at every commit in this tree). The shipped **0.7.0** zip carries a different asset —
+is the same 28,827 at every commit in this tree).
+
+**0.7.1 adds seven more to the same section**, because the GUI pass changed CSS and markup on two pages and nothing else a harness can see —
+the same shape as 0.5.2's five: an asset-text assertion for each rule, plus the markup half that makes the rule reachable. `form.stacked.settings-form.generate-form
+{ max-width: 78rem; }` (the cap lifted for `/csr/generate` alone — three classes, so `/settings` and `/csr/sign` keep theirs), `.artifact-actions .button,`
+exactly once with its colour read as the palette's existing `--green` rather than a new one, `GET /csr/generate` carrying `class="settings-form stacked
+generate-form"` exactly once and `class="section-heading"` exactly twice, `<fieldset>` exactly **zero** times on that page (the `<fieldset>`/`<legend>` voice it
+used since 0.1.0), and `data-mypki-copy-url=` exactly once on `/ca` — the app's only URL-wired copy button. As in 0.5.2, the two GETs are not assertions; only
+their counts are. MEASURED **on this build** rather than carried forward: `GET /static/style.css` answers 200 with **31,766 bytes**, sha256 `8b4d507fb6660b…`,
+byte-identical to the file (`wc -c src/mypki/static/style.css` agrees) — 2,939 bytes above the 28,827 quoted above, which is what adding two CSS blocks does. The
+older number stays where it is because it is what the earlier commits in this tree served. The shipped **0.7.0** zip carries a different asset —
 `/tmp/extract-070/mypki-0.7.0/src/mypki/static/style.css`, **28,152 B**, sha256 `d4b7468bbaa3c8…` — 675 bytes smaller than
 this tree's asset, the difference having arrived with 0.7.1 rather than with any CSS edit made here (the file is already 28,827
 in this tree's baseline commit). An earlier draft of this file quoted **28,152** as "re-measured on this build" and asserted the
 two assets were byte-identical. They are not, which is why the number above was measured from a request rather than copied from
 the release: a "MEASURED on this build" line that had been carried over from 0.7.0 is exactly the failure mode this section warns
-about, and nothing caught it because **no assertion here reads a stylesheet size** — §2's twenty assertions are rule-text and
-class assertions, so a stale byte count could sit in the prose unchallenged. What remains unmeasurable is the rendering, and
+about, and nothing caught it because **no assertion here reads a stylesheet size** — §2's assertions (twenty until 0.7.1 added
+seven more) are rule-text and class assertions, so a stale byte count could sit in the prose unchallenged. What remains unmeasurable is the rendering, and
 these labels say "the served stylesheet defines", never "the page looks like".
 
 **What this section does not and cannot assert:** that a copy button worked. No browser exists on the host these notes were
@@ -258,7 +268,17 @@ key type RSA-2048).
   never authorised;
 - POST with the token → 200, showing exactly **one** `-----BEGIN CERTIFICATE REQUEST-----` block and exactly **one**
   `-----BEGIN PRIVATE KEY-----` block, both shown once, plus download links for each;
-- the page states the output is **stored nowhere**: not in `issued.db`, not on disk, not in the session;
+- **three** `/download/<id>` links in total (0.7.1): the CSR, the key, and one file holding both — request first, then key. The
+  combined body is fetched from the link rather than inferred from its label: exactly one request block, exactly one key block, the
+  request occurring before the key, and the attachment named after this generation's CN (`web-internal-csr-and-key.pem`). Order is an
+  assertion because **MEASURED with openssl on this box** a request-then-key file is read by `openssl req -in` *and* by `openssl pkey -in`,
+  while `openssl x509 -in` refuses it; a key-first file would satisfy those same two commands and be a different file. §11 STEP F reads the
+  fetched fixture through `openssl req`/`openssl pkey`, so the claim is checked by a second program too;
+- the controls sit at the **top** of the result page (0.7.1): `Download CSR and Private Key` once, and two copy buttons still wired to the
+  on-screen blocks through `data-mypki-copy="pem-csr"` / `data-mypki-copy="pem-key"` — a control that is visible but unwired is exactly what a
+  browser-less harness cannot otherwise see, so it is asserted as counts rather than trusted;
+- the page states the output is **stored nowhere**: not in `issued.db`, not on disk, not in the session (the third artifact is a third
+  `store.put` of two strings already in memory — `tests/test_csr_generate.py` hashes the whole data tree across a generation and calls it unchanged);
 - the IP SAN survives as an **IP general name**, not as a DNS entry typed as an IP (mypki refuses the latter outright).
 
 **By hand:** copy both blocks into files before leaving the page. There is no second chance and no recovery command — that is
@@ -356,20 +376,21 @@ comment in `ca_download.html`, so grepping the file would pass against a page th
 - `<th scope="row">CA private key on this host</th>` / `<td>present &mdash; this host can sign</td>` — a boolean, never a path
   to the key and never the key.
 
-**As of 0.5.0 `/ca` also shows the certificate itself** (page-map §4), and §9 asserts four things about that block rather than trusting
-that "it looks like a PEM":
+**As of 0.7.1 `/ca` renders no certificate bytes at all** (page-map §4): the download and copy controls moved to the top of the page and the
+in-page `<pre>` was deleted, which left one host offering the same root three times — attachment, block, and table. §9 asserts the inverse of what
+it asserted against 0.5.0, and the parity half is now answered by a DER parser rather than by comparing two copies of one string:
 
-| Asserted | MEASURED on a live 0.5.0 server |
+| Asserted | MEASURED on a live server (this build) |
 | --- | --- |
-| `<pre class="pem" id="pem-ca">` occurs **exactly once** | 1 |
-| a copy button carrying `data-mypki-copy="pem-ca"` occurs **exactly once** | 1 — the wiring `app.js` has provided since 0.3.0, pointed at a new id |
-| the block holds **exactly one** `-----BEGIN CERTIFICATE-----` … `-----END CERTIFICATE-----` pair | 1 — an accidental chain in that block would make an operator install the wrong thing |
-| the DER inside that block hashes to the same SHA-256 as the body of `GET /ca/certificate` | page == download, **equal within each run** — a scratch CA is a fresh key every time, so no hex belongs in these notes; this build's four runs read `29eb90…`, `dc2c38…`, `b12513…` and `d8c6e2…` (`37b16c…` was 0.5.0's, from `/tmp/pkismoke-050b`) |
+| `href="/ca/certificate"` occurs **exactly once** | 1 — the download control at the top of the page |
+| a copy control carrying `data-mypki-copy-url="/ca/certificate"` occurs **exactly once** | 1 — `app.js`'s `wireCopyUrl` fetches the URL the Download link points at; there is no element on the page left to copy from |
+| `<pre class="pem">` occurs **zero** times, and `-----BEGIN` occurs **zero** times | 0 / 0 — an orphaned `id="pem-ca"` would be a button wired to an element that no longer exists |
+| the serial number and colon-grouped SHA-256 fingerprint **of the certificate `GET /ca/certificate` serves** both appear on the page | both present, **equal within each run** — a scratch CA is a fresh key every time, so no hex belongs in these notes |
 
-The fourth is the one that earns the other three: "the page shows the certificate" is only true if those are **the same bytes** the
-download offers, and a template that re-derived the PEM from the loaded bundle instead of rendering `ca_pem` would still answer 200 with a
-plausible-looking block. §15 hashes a **third** rendering of the same certificate — the paste `/inspect` reads back — so the claim is checked
-from two directions.
+The last row is what earns the other three: 0.5.0 compared the DER inside `id="pem-ca"` with the DER of the download (four runs on an earlier build
+read `29eb90…`, `dc2c38…`, `b12513…` and `d8c6e2…`; `37b16c…` was 0.5.0's, from `/tmp/pkismoke-050b`). Reading the served certificate's own serial and
+fingerprint out of its DER and requiring both on the page states the same "these are the same certificate" fact while comparing a parse against a
+statement rather than a string against a string. §15 still hashes a second rendering — the paste `/inspect` reads back.
 
 **A needle worth knowing about before you mint a scratch CA:** §9's subject check spells `mypki Root CA`. **MEASURED on a
 0.5.0-era**
@@ -754,7 +775,7 @@ answer:
 ```bash
 make e2e                                       # or: .venv/bin/python tools/e2e_harness.py
 …
-== summary: 310 pass, 0 fail, 0 warn (310 assertions) ==
+== summary: 328 pass, 0 fail, 0 warn (328 assertions) ==   # MEASURED 2026-11-06, this tree
 ledger written: reports/harness-ledger.json (gitignored — one machine's measurement, not the release's)
 ```
 
@@ -906,15 +927,24 @@ the ledger file is the current measurement and nothing claims to be the historic
 
 The old ledger — `reports/harness-ledger.md`, generated from `/tmp/pkismoke-0711{sh,ps1}/log.txt` before those harnesses were deleted — ended at
 **288 pass / 0 fail / 0 warn**: §1 8 · §2 20 · §3 1 · §4 3 · §5 9 · §6 12 · §7 6 · §8 2 · §9 17 · §10 16 · §11 76 · §12 34 · §13 10 · §14 9 · §15 35 ·
-§16 30. This harness ends at **310 / 0 / 0**: §1 8 · §2 20 · §3 2 · §4 3 · §5 11 · §6 20 · §7 7 · §8 2 · §9 20 · §10 16 · §11 72 · §12 35 · §13 10 ·
-§14 12 · §15 35 · §16 31, plus **§11 STEP F (openssl) 6**. Seven sections are unchanged (§1, §2, §4, §8, §10, §13, §15); nine moved and one is new.
+§16 30. This harness ends at **328 / 0 / 0** (MEASURED 2026-11-06 by the command above): §1 8 · §2 27 · §3 2 · §4 3 · §5 19 · §6 20 · §7 7 · §8 2 ·
+§9 23 · §10 16 · §11 72 · §12 35 · §13 10 · §14 12 · §15 35 · §16 31, plus **§11 STEP F (openssl) 6** — **17 entries**.
+
+Two baselines are in play and they give different counts, so each is stated with its own arithmetic. Over the whole unreleased line, against the
+shipped 0.7.0 ledger: **six of the seventeen entries are unchanged** (§1 8 · §4 3 · §8 2 · §10 16 · §13 10 · §15 35), **ten moved** (§2, §3, §5, §6,
+§7, §9, §11, §12, §14, §16) and **one is new** (§11 STEP F). Within this build's own GUI pass alone — against the earlier build of the same unreleased
+line, which summed to **310** and whose sections the table below spells out one by one: **fourteen of the seventeen are unchanged** (§1, §3, §4, §6, §7, §8, §10, §11,
+§12, §13, §14, §15, §16 and §11 STEP F) and **three moved** — §2 20 → 27 (+7), §5 11 → 19 (+8), §9 20 → 23 (+3), each named in the table below.
+310 is that earlier build's number, not this one's; it is not the shipped harness's either, which was 288.
 Each delta below is one line — the choice, the reason, and what undoing it costs — so a reader who disagrees can price the disagreement rather than
 re-derive it.
 
 | Section | Δ | Choice | Reason | Undo cost |
 | --- | --- | --- | --- | --- |
 | §3 Version | 1 → 2 (+1) | Keep `GET /version answers 200` alongside the version-string needle. | Every status check is its own assertion in this harness, and §3 is what attributes every other result to a build; a 500 answering with the right version string should not pass. | 1 line (`expect_status`). |
-| §5 Generate CSR | 9 → 11 (+2) | Keep `the generate form carries a CSRF token` and `the CSR carries the IP SAN as an IPAddress general name`. | The first is the precondition §7's rejections and §14's sweep depend on, so its absence must be named rather than implied by a later failure; the second parses the CSR with `cryptography` instead of grepping PEM text for "IP". | 2 checks. |
+| §5 Generate CSR | 9 → 11 (+2), then → 19 (+8 in 0.7.1) | Keep `the generate form carries a CSRF token` and `the CSR carries the IP SAN as an IPAddress general name`; then add the top-of-page controls, the three download links and the combined file's contents. | The first is the precondition §7's rejections and §14's sweep depend on, so its absence must be named rather than implied by a later failure; the second parses the CSR with `cryptography` instead of grepping PEM text for "IP". The 0.7.1 eight are four counts (combined-download label, two copy wirings, three links) plus four reads of the fetched combined body (attachment name, one request block, one key block, request before key). | Back to a 2-line count that asserts nothing about names, and no assertion at all about the file the top button downloads. |
+| §2 Security headers | 20 → 27 (+7 in 0.7.1) | Add five served-stylesheet rules and three markup counts for the restyled pages. | A CSS-only change is invisible to a harness with no browser unless the stylesheet's **text** and the classes in the markup are both asserted; that is the same shape 0.5.2 used for `/inspect`'s paste box. The GETs themselves are not assertions, only their counts. | 7 checks, and the restyling becomes unpoliced: a class renamed in the template would leave three CSS rules styling nothing. |
+| §9 CA certificate | 17 → 20 (+3), then → 23 (+3 net in 0.7.1) | Replace "the page shows the PEM and its DER equals the download's" with "the controls exist, no PEM block or armour is on the page, and the served certificate's serial and fingerprint appear in the table". | `/ca` renders no certificate bytes after 0.7.1 (page-map §4), so the old pair of id assertions would have pinned markup that no longer exists; the replacement compares a **parse** against a **statement**, which is what "same certificate" actually means. | Restore an in-page `<pre>` and its two wiring assertions, and lose the parser-level check. |
 | §6 Sign CSR | 12 → 20 (+8) | Keep the two real download hops: follow both `/download/<id>` anchors, assert their labels and order, then assert each `Content-Disposition`. | The old assertion was `count_exactly(card, 'href="', 2)` — a placeholder that counted quote characters. It passed against a page whose downloads were misnamed or swapped, which is the exact defect class this project keeps measuring (`web-internal.crt` / `web-internal-chain.pem`, `_safe_stem()`). | Back to a 2-line count that asserts nothing about names. |
 | §7 Rejections | 6 → 7 (+1) | Keep the multipart file-part probe next to the urlencoded one. | `_form_fields()` stringifies an uploaded part, so a file upload answers `No PEM block found` — worth asserting rather than assuming, and it is why the DER case must post urlencoded at all. | 1 check (delete the `multipart_files` call). |
 | §9 CA certificate | 17 → 20 (+3) | Keep `CA download declares application/x-pem-file`, `the issued leaf's serial is the serial printed on its card`, `the issued leaf is signed by this CA`. | DER-level facts a shell harness with no DER parser could not state: the media type is what a client actually reads, and issuer-equals-subject plus card-serial-equals-leaf-serial are what make §11's revoke-by-serial mean something. | 3 checks. |

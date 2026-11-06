@@ -1,12 +1,33 @@
 {% extends "base.html" %}
-{% block title %}CA certificate{% endblock %}
+{% block title %}Root CA Certificate{% endblock %}
+{# 0.7.1 pass (operator brief): this page now speaks /settings' visual language — a blue `.section-heading` **outside** a
+   hairline card (`style.css`, "`/csr/generate` as sections"), and the facts card is titled with this root's own Common Name rather
+   than with a sentence written by me. The download and copy controls moved to the top of the page, which is what made the
+   in-page `The certificate (PEM)` block redundant: the same bytes were already offered twice on one page.
+
+   That removal has two consequences worth naming here rather than leaving to a diff:
+     * the harness's §9 byte-parity check between "what the page shows" and "what the download serves" now compares the
+       **download** against the facts table (serial + SHA-256 fingerprint), because there is no second copy of the bytes on the
+       page left to compare — a fact in one place cannot drift, which was always the point of deleting the home-page CA card in
+       0.3.0;
+     * `app.ca_page` no longer passes `ca_pem` at all, so this page is not a route that renders certificate bytes any more, and
+       `GET /ca/certificate` remains the only place those bytes are served.
+   The copy button needs an element to copy from, so it uses the browser's own ClipboardItem (static/app.js) rather than a
+   `<pre>` on screen. #}
 {% block content %}
-<h1>The root CA certificate</h1>
+{# No lede under the title (operator brief): the sentence that used to sit here explained why the download is named
+   `.crt`, and that explanation belongs where an operator is choosing a filename — the Linux hint below, which already says it.
+   The one fact worth stating before any control is this host's own Common Name, which is now the heading of the card. #}
+<h1>Root CA Certificate</h1>
 
 {% if ca_facts %}
-<p class="lede">
-Download the root certificate and install it wherever a client has to trust certificates issued by this CA. The download
-is named <code>mypki-root-ca.crt</code> on purpose: Windows' double-click installer keys off the <code>.crt</code> extension.
+{# Capsule controls at the top (operator brief), same green-on-dark capsule style `/issued`'s Status column uses — see
+   `.artifact-actions` in style.css. "copy to clipboard" here is a real download of the same bytes into the clipboard, not a copy
+   of text that happens to be on screen: with no PEM block rendered there is nothing on screen to select, which is exactly why
+   the button reports honestly when a browser refuses. #}
+<p class="artifact-actions">
+  <a class="button" href="/ca/certificate">download root-CA cert</a>
+  <button type="button" class="copy-pem" data-mypki-copy-url="/ca/certificate" data-mypki-label="The CA certificate">copy to clipboard</button>
 </p>
 
 {# 0.3.0: this is the ONE page that states what this host's root CA is. The card that used to repeat these facts above the
@@ -15,8 +36,9 @@ is named <code>mypki-root-ca.crt</code> on purpose: Windows' double-click instal
    `tools/e2e_harness.py` §1/§9 and two tests in test_views.py carry — moved here rather than being deleted with the card.
    Everything in this table comes from `describe_ca`, which has no parameter that could ask for something private, plus one
    boolean for key presence. #}
-<section class="card">
-  <h2>This host's root CA &mdash; verify it out of band first</h2>
+<h2 class="section-heading">{% if ca_facts.common_name %}{{ ca_facts.common_name }}{% else %}{{ ca_facts.subject }}{% endif %}</h2>
+<section class="card settings-section">
+  <p class="note">Verify this out of band first &mdash; the facts below are read from the public certificate only.</p>
   <table class="facts">
     <tr><th scope="row">Subject</th><td>{{ ca_facts.subject }}</td></tr>
     {% if ca_facts.common_name %}<tr><th scope="row">CN</th><td>{{ ca_facts.common_name }}</td></tr>{% endif %}
@@ -40,28 +62,10 @@ is named <code>mypki-root-ca.crt</code> on purpose: Windows' double-click instal
     Compare this fingerprint against what your client shows after installation. Installing a root certificate into the
     Trusted Root store is the one action that makes every certificate this CA issues trusted &mdash; do not do it on faith.
   </p>
-  {# 0.5.0: the certificate itself, on the page that already describes it. Until now this page stated facts about the
-     root (subject, serial, fingerprint, BasicConstraints) and offered a download, but never showed the bytes -- so an
-     operator installing into a device with no file transfer had nothing to copy. The block is the same PEM
-     `GET /ca/certificate` serves as an attachment, rendered here rather than re-derived: one source, one answer.
-     A certificate is public material, so this adds no exposure (test_no_key_leakage.py's armour regex and its
-     "no bytes of this CA's private key" checks still apply to this page). #}
-  {% if ca_pem %}
-  <h3>The certificate (PEM)</h3>
-  <pre class="pem" id="pem-ca">{{ ca_pem }}</pre>
-  <p class="copy-row">
-    <a class="button" href="/ca/certificate">Download mypki-root-ca.crt</a>
-    <button type="button" class="copy-pem" data-mypki-copy="pem-ca" data-mypki-label="The CA certificate">Copy to clipboard</button>
-  </p>
-  <p class="hint">Copying is the same bytes as the download. If the button reports a failure, this host is being served
-     over plain HTTP, where browsers refuse clipboard access &mdash; use Download.</p>
-  {% else %}
-  <p><a class="button" href="/ca/certificate">Download mypki-root-ca.crt</a></p>
-  {% endif %}
 </section>
 
-<section class="card">
-  <h2>Install instructions</h2>
+<h2 class="section-heading">Install instructions</h2>
+<section class="card settings-section">
 
   <h3>Windows</h3>
   <ol>

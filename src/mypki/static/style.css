@@ -379,6 +379,43 @@ a:hover, a:focus { color: #7fb8e8; }
 
 .settings-form .field .hint { max-width: 46rem; }
 
+/* --------------------------------------------------------------------- /csr/generate as sections (this pass)
+
+   The operator's brief was "the styling should be the same as settings": a blue heading **outside** a hairline card, the card
+   one step lighter than the page. `/csr/generate` had been the last form using `<fieldset>` + `<legend>`, which is a different
+   voice from every other page — and `legend` colours itself with `background: var(--page)`, so a legend sitting on a card that
+   is *not* --page (a `.card.settings-section`) renders a strip of the wrong colour. That is why these fields reuse
+   `.settings-form` / `.field` rather than gaining a second set of look-alike rules: one definition, and the two pages cannot
+   drift apart.
+
+   The deliberate exception is the **width**. `form.stacked` caps every stacked form at 46rem because that is a readable line
+   length for prose-sized inputs; `/csr/generate`'s Subject grid holds six fields side by side, and inside 46rem each box drops
+   under its own uppercase label — the mismatch an operator sees as "the boxes are narrower than the words above them". So the
+   cap is lifted for this form only, to `main`'s own 78rem ceiling rather than to `none`, which keeps a long hint line from
+   running past the text column `/issued` and `/settings` use. `.settings-form` itself stays capped (its fields are one per row)
+   and `/inspect` keeps its own scoped rules further down this file: three forms, three widths, each named.
+
+   Nothing here has been *seen* — no browser exists on the host these rules were written on — so SMOKE_TESTING §5 asserts only
+   that the served stylesheet carries them and that the markup carries the classes they are scoped to. */
+form.stacked.settings-form.generate-form { max-width: 78rem; }
+
+/* The grid spans the card instead of wrapping at the form cap, so six fields sit on one row rather than three rows of two. */
+.generate-form .grid { grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); }
+
+/* Capsule artifact actions: the shape and colour `/issued`'s Status column already uses (`.pill.active` — green ink, a darkened
+   green hairline, --green from the palette) drawn at button size. `.button` is an <a> and `button.copy-pem` is a <button>, so
+   both spellings are listed: one capsule style for one row of controls, no new colour entering the page. */
+.artifact-actions .button,
+.artifact-actions button.copy-pem {
+  border-radius: 999px;
+  border-color: #1d4b3a;
+  background: #0f1b18;
+  color: var(--green);
+}
+
+.artifact-actions .button:hover,
+.artifact-actions button.copy-pem:hover { background: #14281f; color: var(--green); }
+
 /* --------------------------------------------------------------------- /inspect's paste box spans its section (0.5.2, page-map §13)
 
    What an operator reported, and what the two rules above actually do to it: `form.stacked` caps *every* stacked form at 46rem,
@@ -595,7 +632,12 @@ button.danger.solid:hover { background: #ff6b70; }
  * an honest sentence when the browser refuses clipboard access (which plain HTTP does — see app.js's own measurement note),
  * which is why `.copy-note` exists at all: a control that silently does nothing is worse than a control that says so. */
 
-.copy-row { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin: 0.5rem 0 0; }
+/* `.artifact-actions` is the same row at the **top** of a result rather than under a block: `/csr/generate` and `/ca` both put
+   their capsule controls above everything else, and one flex rule carries both. */
+.copy-row,
+.artifact-actions { display: flex; align-items: center; gap: 0.7rem; flex-wrap: wrap; margin: 0.5rem 0 0; }
+
+.artifact-actions { margin: 0 0 1.2rem; }
 
 button.copy-pem {
   border-color: var(--line-strong);

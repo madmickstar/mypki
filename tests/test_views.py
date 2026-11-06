@@ -1351,47 +1351,102 @@ def test_the_ca_download_body_is_exactly_one_copy_of_the_public_certificate(sess
     assert "-----BEGIN" not in response.text.replace("-----BEGIN CERTIFICATE-----", "")
 
 
-def test_the_ca_page_renders_the_certificate_it_lets_you_copy(session_client, ca_bundle) -> None:
-    """0.5.0: `/ca` shows the PEM and wires a copy button to it (page-map §4).
+def test_the_ca_page_offers_the_certificate_by_url_and_not_as_a_second_copy(session_client, ca_bundle) -> None:
+    """0.7.1 (operator brief): `/ca` offers download + copy at the top and renders **no** certificate bytes on the page.
 
-    Before this there was no PEM on the page at all -- only `describe_ca`'s facts table and a Download link -- so an
-    operator installing a root on a device with no file transfer had nothing to paste. The block is the same bytes
-    `/ca/certificate` serves, asserted as *equal* rather than "looks like a certificate": this project deleted the
-    home-page CA card in 0.3.0 because "a fact shown in two places is two facts that can drift apart", and adding a
-    second copy of the root to the UI is only safe while something proves the two copies agree.
+    0.5.0 put the PEM in a `<pre>` on this page so an operator with no file transfer had something to paste. The
+    brief moved "download root-CA cert" and "copy to clipboard" to the top of the page, which left three
+    renderings of one certificate on one host -- the attachment, the block, and the table describing it.
+    Deleting the middle one is the reasoning that deleted the home-page CA card in 0.3.0 (page-map §1): a fact
+    in two places is two facts that can drift, and this time the two
+    places were the same page.
 
-    The button is asserted by its `data-mypki-copy` target rather than by its label, because app.js resolves the block
-    through that attribute (`wireCopy`) and a rename of the visible text must not silently unwire it. Asserting the id
-    and the attribute together catches both halves of the pairing going wrong.
+    So the assertions invert, and both halves are asserted because each catches a different mistake:
+      * the copy control exists and points at `/ca/certificate` -- by attribute, not label, because `app.js` resolves it
+        through `data-mypki-copy-url` (`wireCopyUrl`) and a rename of the visible text must not silently unwire it;
+      * no `<pre>`, no armour, and no `pem-ca` id anywhere on the page -- an orphaned id would be a button wired to an
+        element that no longer exists, which is the failure mode `wireCopyUrl` was written to avoid.
+
+    Parity between "what the page says" and "what the download serves" now has to be asserted some other way,
+    and it is: the serial and colon-grouped fingerprint this page prints are compared against the DER of the
+    bytes `/ca/certificate` serves. That is a stronger claim than comparing two copies of the same text, because
+    it asks the parser rather than the string.
     """
-    expected = ca_bundle.cert.public_bytes(Encoding.PEM).decode("ascii")
-
     page = session_client.get("/ca")
 
-    assert 'id="pem-ca"' in page.text
-    assert 'data-mypki-copy="pem-ca"' in page.text
+    assert 'data-mypki-copy-url="/ca/certificate"' in page.text
     assert 'class="copy-pem"' in page.text
-    # The rendered block is the download, byte for byte (Jinja autoescape only affects characters that cannot appear in
-    # base64 PEM, so no unescaping step is needed here -- asserted rather than assumed).
-    assert expected.strip() in page.text
+    assert "download root-CA cert" in page.text
+
+    # The block is gone, and so is everything that used to point at it. `pre.pem` rather than a bare `<pre`: the
+    # install card legitimately carries `pre.cmd` command blocks (`certutil`, `keytool`), and this assertion is
+    # about certificate bytes rather than about every monospace box on the page.
+    assert 'id="pem-ca"' not in page.text
+    assert 'data-mypki-copy="pem-ca"' not in page.text
+    assert '<pre class="pem"' not in page.text
+    assert "-----BEGIN" not in page.text
+
+    download = session_client.get("/ca/certificate")
+    served = x509.load_pem_x509_certificate(download.content)
+    facts = describe_ca(served)
+
+    assert facts["serial_hex"] in page.text, "the table no longer matches the certificate this route serves"
+    assert format_fingerprint(facts["fingerprint_sha256"]) in page.text
+    assert facts["subject"] in page.text
 
 
-def test_the_ca_page_pem_block_holds_one_certificate_and_no_armour(session_client, ca_bundle) -> None:
-    """A certificate is not private-key armour, and this page now prints one in full.
+def test_the_ca_page_is_a_settings_styled_card_titled_with_the_roots_own_name(session_client, ca_bundle) -> None:
+    """0.7.1 (operator brief): the facts card is `/settings`-styled and its heading is the root's Common Name, in blue.
 
-    `/ca` has always been in `test_no_key_leakage.py`'s armour sweep; this is the narrower claim that belongs next to
-    the feature that made the page show PEM: exactly one CERTIFICATE block, no other BEGIN marker of any kind, and the
-    public key it contains is the CA's -- i.e. the thing being displayed is the certificate, not a key that happens to
-    sit in the same file.
+    The brief was a styling request, so what a box with no browser can assert is the **markup contract** the
+    stylesheet keys
+    off, not the rendering: `style.css` colours `.section-heading` with `--blue` and paints its background on
+    `.card.settings-section`, and both classes already exist for `/settings`. Reusing them here is the point --
+    a page that
+    invented a second look-alike heading could drift from `/settings` while looking identical today.
+
+    Two things are counted because both were part of the request: the heading sits **outside** the card (an
+    `<h2>` before the `<section>`, not inside it, which is how this page titled its card before) and it carries
+    the root's own Common Name rather
+    than a sentence written by me. The order assertion is what proves "outside": heading index < card index.
     """
     page = session_client.get("/ca")
+    cn = describe_ca(ca_bundle.cert)["common_name"]
 
-    assert page.text.count("-----BEGIN CERTIFICATE-----") == 1
-    assert page.text.count("-----END CERTIFICATE-----") == 1
+    headings = page.text.count('class="section-heading"')
+    assert headings >= 2, "the facts card and the install card both need a blue heading"
+    assert f'<h2 class="section-heading">{cn}</h2>' in page.text, page.text[:600]
+    assert '<section class="card settings-section">' in page.text
+
+    heading = page.text.index(f'<h2 class="section-heading">{cn}</h2>')
+    card = page.text.index('<section class="card settings-section">')
+    assert heading < card, "the title is inside the card rather than above it"
+    # The old in-card title is gone rather than joined with the new one: two titles on one card is the drift
+    # removed here.
+    assert "This host's root CA &mdash; verify it out of band first" not in page.text
+
+
+def test_the_ca_certificate_download_holds_one_certificate_and_no_armour(session_client, ca_bundle) -> None:
+    """The certificate is not private-key armour, and since 0.7.1 it is the only place `/ca`'s path prints one.
+
+    This assertion used to live next to the page's `<pre>` because that block was the feature being proven. The
+    page no longer renders certificate bytes, so the same claim moved onto the route that does serve them --
+    which is the narrower, stronger version of it: exactly one CERTIFICATE block, no other BEGIN marker of any
+    kind, and the public key inside it is this CA's
+    (the thing served is the certificate, not a key that happens to sit in the same file).
+
+    `/ca` itself stays in `test_no_key_leakage.py`'s armour sweep as it has since 0.1.0; what changed is that
+    its now-trivial
+    "no armour" result is no longer the interesting half of this pair.
+    """
+    download = session_client.get("/ca/certificate")
+
+    assert download.text.count("-----BEGIN CERTIFICATE-----") == 1
+    assert download.text.count("-----END CERTIFICATE-----") == 1
     others = [
-        line for line in page.text.splitlines() if line.startswith("-----BEGIN") and "CERTIFICATE-----" not in line
+        line for line in download.text.splitlines() if line.startswith("-----BEGIN") and "CERTIFICATE-----" not in line
     ]
-    assert others == [], f"unexpected PEM armour on /ca: {others}"
+    assert others == [], f"unexpected PEM armour on /ca/certificate: {others}"
 
     shown = ca_bundle.cert.public_bytes(Encoding.PEM).decode("ascii").strip()
     assert x509.load_pem_x509_certificate(shown.encode("ascii")).public_key().public_numbers() == (
@@ -1402,18 +1457,20 @@ def test_the_ca_page_pem_block_holds_one_certificate_and_no_armour(session_clien
 def test_the_ca_page_offers_no_pem_block_when_there_is_no_ca(client_without_ca) -> None:
     """The no-CA host renders the notice and no `<pre>`, rather than an empty block or a 500.
 
-    `ca_of()` returns None here, so `ca_pem` is None and the template's `{% if ca_pem %}` arm must fall back to the
-    bare Download link it rendered before. An unconditional `{{ ca_pem }}` would print "None" inside a `<pre>` on every
-    fresh host, which is the kind of thing a first run is judged by.
+    `ca_of()` returns None here, so every CA half of this page is behind `{% if ca_facts %}` and none of it renders. The
+    reason this case still needs its own test after 0.7.1 deleted the in-page PEM block: a template edit that moved the
+    controls or the facts card **outside** that guard would make a keyless host render an anchor to
+    `/ca/certificate`, which answers 503 on such a host, or print "None" where a value is missing -- both
+    first-run impressions of a fresh install.
     """
     page = client_without_ca.get("/ca")
 
     assert page.status_code == 200
     assert 'id="pem-ca"' not in page.text
     assert "data-mypki-copy" not in page.text
-    # The whole card is inside `{% if ca_facts %}`, so a keyless host renders no PEM block at all -- and the string
-    # "None" must not reach the page from a `{{ ca_pem }}` that has no value.
-    assert "<pre" not in page.text
+    # The whole card is inside `{% if ca_facts %}`: a keyless host renders no PEM block and no copy control at all.
+    assert '<pre class="pem"' not in page.text
+    assert 'href="/ca/certificate"' not in page.text
     assert NO_CA_MARK in page.text
 
 

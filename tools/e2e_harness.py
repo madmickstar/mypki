@@ -639,6 +639,61 @@ def section_2(app: Harness) -> None:
         ".settings-form .field textarea",
     )
 
+    # 0.7.1 (operator brief): /csr/generate restyled as /settings sections, and one capsule button style shared
+    # by the pages that offer artifact controls. Same rule as above — a browser-less harness reads served text
+    # only, so these assert "the stylesheet defines" and "the markup carries the class", never "the page looks
+    # like".
+    app.count_exactly(
+        "the served stylesheet lifts the form cap for /csr/generate only (three classes: .settings-form .stacked"
+        " .generate-form, so /settings and /csr/sign are untouched)",
+        body,
+        "form.stacked.settings-form.generate-form { max-width: 78rem; }",
+        1,
+    )
+    app.count_exactly(
+        "the capsule artifact controls reuse --green rather than introducing a colour",
+        body,
+        ".artifact-actions .button,",
+        1,
+    )
+    app.check(
+        "the capsule rule colours its controls with the palette's existing --green",
+        "color: var(--green);" in body[body.index(".artifact-actions .button,") :][:400],
+    )
+
+    generate_page = app.get("/csr/generate")
+    if generate_page.status_code != 200:
+        app.check(
+            f"GET /csr/generate answered {generate_page.status_code} while checking the restyling's markup contract",
+            False,
+        )
+    else:
+        app.count_exactly(
+            "/csr/generate posts through the form class those width rules are scoped to",
+            generate_page.text,
+            'class="settings-form stacked generate-form"',
+            1,
+        )
+        app.count_exactly(
+            "/csr/generate titles its two sections outside their cards (Subject and Key)",
+            generate_page.text,
+            'class="section-heading"',
+            2,
+        )
+        app.count_zero(
+            "/csr/generate no longer uses fieldset/legend for those sections",
+            generate_page.text,
+            "<fieldset>",
+        )
+    ca_page_for_style = app.get("/ca")
+    if ca_page_for_style.status_code == 200:
+        app.count_exactly(
+            "/ca's copy control is the only URL-wired copy button in the app",
+            ca_page_for_style.text,
+            "data-mypki-copy-url=",
+            1,
+        )
+
     # The template half, fetched here rather than borrowed from §15: a CSS rule whose class is missing from the markup
     # styles nothing, and the two halves of this fix live in different files. The GET is not an assertion — only its
     # class count is.
@@ -721,6 +776,43 @@ def section_5(app: Harness) -> None:
         app.warn("the page lacks the 'stored nowhere' warning")
     app.count_exactly("a private-key download link is offered", body, "Download private key", 1)
     app.count_at_least("the IP SAN survived generation as an IP general name", body, "10.0.0.7")
+
+    # 0.7.1 (operator brief): the result controls sit at the TOP of the page — one download yielding both
+    # artifacts and two copy buttons, capsule-styled like /issued's status chips. Three counts, because a
+    # control that is present but unwired is exactly what a browser-less harness cannot otherwise see: the copy
+    # buttons are only real if they still name the on-screen blocks through data-mypki-copy, and app.js resolves
+    # nothing else.
+    app.count_exactly("the combined download control is offered", body, "Download CSR and Private Key", 1)
+    app.count_exactly("the CSR copy button is wired to the CSR block", body, 'data-mypki-copy="pem-csr"', 1)
+    app.count_exactly("the key copy button is wired to the key block", body, 'data-mypki-copy="pem-key"', 1)
+
+    # The combined file, fetched over the same socket rather than assumed from its label. Two blocks and no
+    # third one: a file an operator saves because its name says "request and key" is a file somebody hands to a
+    # service, and a stray third block in it would be installed alongside the pair. §11 STEP F reads this
+    # fixture through openssl, so a wrong order surfaces there as a parse failure rather than staying invisible.
+    combined_links = re.findall(r'href="(/download/[^"]+)"', body)
+    app.check(
+        f"the page offers three one-shot downloads (got {len(combined_links)})",
+        len(combined_links) == 3,
+    )
+    for link in combined_links:
+        artifact = app.get(link)
+        if "csr-and-key" in artifact.headers.get("content-disposition", ""):
+            app.check(
+                f"the combined download is an attachment named after this generation ({artifact.status_code})",
+                artifact.status_code == 200
+                and "web-internal-csr-and-key.pem" in artifact.headers["content-disposition"],
+            )
+            app.count_exactly("it holds exactly one request block", artifact.text, CSR_BEGIN, 1)
+            app.count_exactly("it holds exactly one private key block", artifact.text, "-----BEGIN PRIVATE KEY-----", 1)
+            app.check(
+                "the request comes before the key (openssl reads that order; a key-first file is a different file)",
+                artifact.text.index(CSR_BEGIN) < artifact.text.index("-----BEGIN PRIVATE KEY-----"),
+            )
+            app.write_fixture("generated-csr-and-key.pem", artifact.text)
+            break
+    else:
+        app.check("no download on the page is the combined request+key file", False)
 
     csr = pem_block(body, "CERTIFICATE REQUEST")
     if csr is None:
@@ -1055,30 +1147,36 @@ def section_9(app: Harness) -> None:
     app.write_fixture("ca.crt", body)
     app.state["ca_pem"] = body
 
-    # 0.5.0 shows the certificate itself on /ca. Three assertions because there are three ways this feature could rot
-    # without any of them turning red today: the block vanishes, the button stops pointing at it, or the page's copy
-    # drifts from the download's. The fourth is the one that earns the other three — "the page shows the certificate" is
-    # only true if those are the same bytes the download offers.
-    app.count_exactly("/ca renders the CA PEM block (pre id=pem-ca)", page, 'id="pem-ca"', 1)
-    app.count_exactly("/ca's copy button points at that block", page, 'data-mypki-copy="pem-ca"', 1)
+    # 0.7.1 (operator brief): /ca's controls moved to the top of the page and the in-page PEM block was deleted, so this
+    # section asserts the opposite of what it used to. Seven assertions replace four, inverted on purpose:
+    #   * the two capsule controls exist at the top, and the copy one is wired by URL rather than by an element id —
+    #     app.js's wireCopyUrl fetches the same /ca/certificate the Download link points at;
+    #   * nothing on the page carries certificate bytes any more (`<pre class="pem">` absent, no armour), which is what
+    #     makes an orphaned `pem-ca` id a failure worth catching rather than a cosmetic one;
+    #   * parity between "what the page states" and "what the download serves" now has to be proven through the facts
+    # table, so the served certificate's own serial and colon-grouped fingerprint are read out of its DER and
+    # searched
+    #     for on the page. That asks the parser rather than comparing two copies of one string — a stronger claim than
+    #     0.5.0's, and the reason deleting the block did not weaken this section.
+    app.count_exactly("/ca offers the root as a download control", page, 'href="/ca/certificate"', 1)
+    app.count_exactly("/ca's copy control is wired to that URL", page, 'data-mypki-copy-url="/ca/certificate"', 1)
+    app.count_zero("/ca renders no PEM block of its own any more", page, '<pre class="pem"')
+    app.count_zero("/ca carries no PEM armour", page, "-----BEGIN")
 
-    page_block = pem_block(page, "CERTIFICATE")
-    if page_block is None:
-        app.check("/ca renders no extractable CERTIFICATE block to compare", False)
-        return
-    app.count_exactly(
-        "/ca's PEM block holds exactly one certificate (an accidental chain would make an operator install the wrong"
-        " thing)",
-        page_block,
-        "-----BEGIN CERTIFICATE-----",
-        1,
+    served_cert = x509.load_pem_x509_certificate(body.encode())
+    served_sha256 = served_cert.fingerprint(hashes.SHA256()).hex().upper()
+    grouped = ":".join(served_sha256[i : i + 2] for i in range(0, len(served_sha256), 2))
+    app.count_at_least(
+        f"/ca states the fingerprint of the certificate the download serves ({grouped[:11]}…)",
+        page,
+        grouped,
     )
-    page_sha = pem_der_sha(page_block)
-    download_sha = pem_der_sha(body)
-    app.check(
-        f"the certificate shown on /ca is the same bytes as the download ({page_sha})",
-        page_sha is not None and page_sha == download_sha,
+    app.count_at_least(
+        "/ca states the serial of the certificate the download serves",
+        page,
+        format(served_cert.serial_number, "x"),
     )
+    app.count_at_least("/ca titles its facts card with the root's own Common Name", page, CA_CN)
 
     try:
         ca_cert = x509.load_pem_x509_certificate(body.encode())

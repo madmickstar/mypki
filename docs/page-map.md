@@ -84,13 +84,29 @@ reason.
 | `key_type` | allow-list only: `rsa-2048`, `rsa-3072` (default), `rsa-4096`, `ec-p256`, `ec-p384` |
 | `passphrase`, `confirm` | optional pair. **Floor 8** (`csr.PASSPHRASE_MIN_LENGTH`) with a stated recommendation of 12 (`PASSPHRASE_RECOMMENDED_LENGTH`): 8–11 is accepted and an advisory says "12 or more is better", naming the length it saw and never the value. Must match when present; used **only** to encrypt the returned PEM |
 
-Output shown **once**, above a "not stored anywhere" warning: CSR PEM in a `<pre>` + `Download CSR (.pem)`;
-private key PEM in a `<pre>` + `Download private key (.key)`, whose header is
+**The form's own labels (0.7.1).** The visible field names are the X.501 abbreviations an operator sees in every certificate
+viewer — `Common Name (CN)`, `Subject Alternative Names (SAN)`, `Organisation (O)`, `Organisation Unit (OU)`, `Country Code (C)`,
+`State (S)`, `Location (L)`, `Email (E)` — and each section is a blue `.section-heading` outside a `.card.settings-section`, i.e. `/settings`'
+styling rather than the `<fieldset>`/`<legend>` pair this page carried from 0.1.0 (§12). The **internal** field names in the table above did not
+change, and they are what the validation reasons quote, so a refusal reads `country must be exactly two letters (got 'DEU')` beside a box labelled
+`Country Code (C)`: one label in two places is exactly the drift this document warns about, and these two are deliberately different words for the
+same field rather than two names for two things.
+
+Output shown **once**. Three capsule controls sit at the **top** of the result page (0.7.1): `Download CSR and Private Key` (one file, request first
+then key), `Copy CSR to clipboard` and `Copy Private Key to clipboard`. The two PEM blocks stay on the page below — a `<pre>` is the flow that works with
+no script and no download, both harnesses extract *the page's* armour to prove the downloads serve what was shown, and an operator with no file transfer
+reads them off the screen. The separate `Download CSR (.pem)` / `Download private key (.key)` links remain under their blocks; a key's header is
 `-----BEGIN ENCRYPTED PRIVATE KEY-----` when a passphrase was supplied.
+
+The combined file is a decision, not a convenience: **MEASURED with openssl on this box**, a request followed by a key in one file is read correctly by
+`openssl req -in` and by `openssl pkey -in`, while `openssl x509 -in` refuses it. Request-first is therefore pinned by
+`test_csr_generate.py::test_the_combined_download_holds_this_generation_request_and_key`, which also asserts the pair belongs to *this*
+generation (the request's public key equals the private key's) and that the file holds exactly two blocks.
 
 **Nothing is written to disk or the DB.** The key exists only in request memory and the response body. Downloads
 are served from the process-memory one-shot store (§10), never from a file, and `test_csr_generate.py` asserts the
-data dir is byte-for-byte unchanged across a generation.
+data dir is byte-for-byte unchanged across a generation — including for the third artifact, which is a third `store.put` of two strings already in memory
+and not a write.
 
 ---
 
@@ -192,17 +208,27 @@ Page shows SHA-256 fingerprint + validity for out-of-band verification, plus ins
 | **macOS** | Keychain Access → System keychain → Show → "When using this certificate: Always Trust" |
 | **Linux** | copy to `/usr/local/share/ca-certificates/mypki-root-ca.crt`, then `sudo update-ca-certificates`; Firefox: use the system trust store; Java: `keytool -importcert -alias mypki -file mypki-root-ca.crt -keystore $JAVA_HOME/lib/security/cacerts` |
 
-### The copyable PEM block on this page (0.5.0) — and why it is not §13's reader
+### The controls at the top of this page (0.7.1) — and why there is no PEM block on it any more
 
-`app.ca_page` passes one extra context value, `ca_pem`, and `ca_download.html` renders it as `<pre class="pem" id="pem-ca">` plus
-`<button class="copy-pem" data-mypki-copy="pem-ca" data-mypki-label="The CA certificate">Copy to clipboard</button>`. The block is
-**the bytes the download serves**, handed to the template rather than re-derived from the loaded bundle: one certificate, on screen,
-copyable, so an operator can verify what they are about to install without saving a file first. It renders only `{% if ca_pem %}` — a host
-whose CA cannot be read still gets its facts table and its download link, not a broken block.
+`GET /ca` renders **no certificate bytes**. Two capsule controls sit above everything else — `download root-CA cert` (an `<a>` to
+`/ca/certificate`) and `copy to clipboard` (`<button class="copy-pem" data-mypki-copy-url="/ca/certificate">`, wired by
+`app.js`'s `wireCopyUrl`, which fetches that URL and writes the body to the clipboard as `text/plain`). The facts card is titled with this
+root's own Common Name in a `.section-heading` outside the card, and the card is `.card.settings-section` — `/settings`' styling, not a second
+look-alike (§12).
 
-Two assertions keep "the same bytes" honest, because that is exactly the sentence a refactor breaks silently: SMOKE_TESTING §9 hashes the DER
-**inside** `id="pem-ca"` and compares it with the DER of `GET /ca/certificate`, and its §15 asks the same question of a
-**third** rendering — the certificate pasted into `/inspect` and read back (§13).
+0.5.0 put the certificate in a `<pre id="pem-ca">` here so an operator with no file transfer had something to paste. With the controls at the
+top, one host was rendering the same certificate three times on one page: the attachment, the block, and the table describing it. Deleting the
+middle one is this document's own oldest rule applied to a page copying itself — a fact in two places is two facts that can drift (§1) — so
+`app.ca_page` now passes **no extra context at all** and `GET /ca/certificate` is once again the only route on this page's path that emits
+certificate bytes.
+
+What replaced the parity assertion is stronger rather than weaker. §9 used to hash the DER inside `id="pem-ca"` against the DER of the download;
+it now reads the serial number and the colon-grouped SHA-256 fingerprint out of the **served** certificate and asserts both appear on the page,
+which asks a DER parser instead of comparing two copies of one string. §15 keeps the same question for `/inspect`'s re-armoured paste.
+
+`/ca` is still not §13's reader. `/ca` shows **this host's own root**, read from disk by the code that already loads it; `/inspect` takes
+**whatever text an operator pasted**, parses it, and re-armours what it parsed. `/inspect` carries no opinion about whether what it read belongs
+to this host, is trusted, or was ever issued here; `/ca` is the page that knows it is *this* CA.
 
 §13 is a different kind of page and must not be confused with this one. `/ca` shows **this host's own root**, read from disk by the code
 that already loads it; `/inspect` takes **whatever text an operator pasted**, parses it, and re-armours what it parsed. Those land on the
@@ -701,7 +727,7 @@ no facts table, asserted as **zero** `<th scope="row">` occurrences in §15 — 
 CA** at all.
 
 **Re-armouring is why byte parity is assertable.** Each parsed block is re-emitted from the bytes that were decoded, so `id="pem-1"` on
-`/inspect`, `id="pem-ca"` on `/ca` and `GET /ca/certificate` are three renderings of one certificate (§4). §15's parity assertion is scoped to
+`/inspect` and `GET /ca/certificate` are two renderings of one certificate (§4; `/ca` stopped rendering a third of its own in 0.7.1). §15's parity assertion is scoped to
 `<pre class="pem" id="pem-1">…</pre>` for a reason learned by running the harness: the textarea's **placeholder** spells out
 `-----BEGIN CERTIFICATE-----&#10;MIID...&#10;-----END CERTIFICATE-----`, so the first armour pair on that page is an example rather than the
 parsed block. Unscoped, the comparison hashed placeholder text and reported a mismatch against a correct app.
@@ -714,8 +740,10 @@ inputs to 34rem with no `textarea` equivalent — the generic `input, textarea, 
 mismatch an operator reported. `form.inspect-form { max-width: none; }` lifts the cap for this one form and `#pem_paste { width: 100%; max-width:
 none; }` makes the box span what the cards above it span, with the Inspect button following it rather than sitting half-width underneath. Two
 things are deliberately **not** widened: `.settings-form` itself (its fields on `/settings` are inputs, and widening it would widen every settings
-field), and the request textareas on `/csr/generate` and `/csr/sign` (`sans`, `c_sans`, `csr_pem`), which stay 46rem-capped plain `stacked` forms —
-those boxes carry requests about to be signed, and their width is part of how the sign page reads. `box-sizing: border-box` has been global since
+field), and the request textarea on `/csr/sign` (`csr_pem`), which stays a 46rem-capped plain `stacked` form — that box carries a request about to be
+signed, and its width is part of how the sign page reads. `/csr/generate` joined this list from the other side in 0.7.1: it posts through
+`form.settings-form.stacked.generate-form`, whose cap is lifted to `main`'s own 78rem because its Subject grid carries six fields side by side and a
+46rem ceiling drops each one under its own label. Its `sans` textarea widens with it; `csr_pem` does not. `box-sizing: border-box` has been global since
 0.1.0, so `width: 100%` on a textarea needs no padding arithmetic. Nothing here can show what this looks like: no browser exists on the host these
 notes were written on, so SMOKE_TESTING §2 asserts only that **the served stylesheet carries the three rules**.
 

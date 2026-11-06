@@ -89,6 +89,54 @@
     );
   }
 
+  // --------------------------------------------------- copy from a URL instead of from the page (0.7.1)
+  //
+  // `/ca` no longer renders the certificate on screen: the operator brief put "download root-CA cert" and "copy to clipboard"
+  // at the top of the page, which made the in-page PEM block a third copy of bytes this host already serves as an attachment
+  // (page-map §1's reason for deleting the home-page CA card applies to a page copying itself too). A button that copies text
+  // from the page has nothing to copy from here, so this second wiring fetches the same URL the Download control points at.
+  //
+  // Two things follow, and both are stated in code rather than hoped for:
+  //   * the body is written as `text/plain`, not with its own media type. ClipboardItem's supported-type set is a browser's
+  //     decision, not ours, and `application/x-pem-file` is not in it — asking for the type the server sent is how this button
+  //     would throw on a browser that otherwise copies fine. The bytes are unchanged either way; only the label differs.
+  //   * there is no selection fallback available. `copyBySelection` needs text already on screen, and this page deliberately has
+  //     none, so a refusal says so and names Download. That is the same honesty rule as every other button here: a control that
+  //     silently does nothing is how an operator believes they have something they do not have.
+  function wireCopyUrl(button) {
+    var url = button.getAttribute("data-mypki-copy-url");
+    if (!url) return;
+
+    button.addEventListener("click", function () {
+      fetch(url, { credentials: "same-origin" })
+        .then(function (response) {
+          if (!response.ok) throw new Error("the copy source answered " + response.status);
+          return response.text();
+        })
+        .then(function (body) {
+          var modern = navigator.clipboard && window.isSecureContext !== false;
+          if (!modern) throw new Error("no clipboard access in this context");
+          var blob = new Blob([body], { type: "text/plain" });
+          if (typeof ClipboardItem !== "undefined" && navigator.clipboard.write) {
+            return navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]);
+          }
+          return navigator.clipboard.writeText(body);
+        })
+        .then(function () {
+          note(button, "Copied to clipboard", false);
+        })
+        .catch(function () {
+          var label = button.getAttribute("data-mypki-label") || "That file";
+          note(
+            button,
+            label + " could not be copied by this browser. Nothing was on this page to select, so use Download instead"
+              + " (clipboard access needs a secure context: over plain HTTP browsers refuse it).",
+            true
+          );
+        });
+    });
+  }
+
   function wireCopy(button) {
     var target = button.getAttribute("data-mypki-copy");
     if (!target) return;
@@ -325,6 +373,7 @@
 
   function main() {
     Array.prototype.forEach.call(document.querySelectorAll("button[data-mypki-copy]"), wireCopy);
+    Array.prototype.forEach.call(document.querySelectorAll("button[data-mypki-copy-url]"), wireCopyUrl);
     Array.prototype.forEach.call(document.querySelectorAll("[data-mypki-choice]"), wireChoice);
     Array.prototype.forEach.call(document.querySelectorAll("[data-mypki-state-field]"), wireCheckboxState);
     wireSelection();

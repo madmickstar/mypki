@@ -86,7 +86,6 @@ from .config import Settings, get_settings
 from .crl import CRL_PEM_MARKER, CrlFacts, read_crl_pem, rebuild_crl, summarise_crl
 from .csr import (
     PASSPHRASE_MIN_LENGTH,
-    PASSPHRASE_RECOMMENDED_LENGTH,
     CsrFields,
     build_csr,
     parse_and_validate_csr,
@@ -1884,8 +1883,15 @@ def _register_routes(app: FastAPI) -> None:
             "values": _subject_defaults(settings_of()),
             "errors": [],
             "advisory": None,
+            # `passphrase_min` stays because the Key hint renders it: "Minimum {{ passphrase_min }}
+            # characters" is the brief's sentence with its number still derived from
+            # csr.PASSPHRASE_MIN_LENGTH, so the floor cannot move out from under the page. A literal 8 in the
+            # template would be a second copy of that constant (§1).
+            # `passphrase_recommended` was dropped: no part of this page states a recommendation any more. The
+            # 12-or-more advice is still said where it always was - by csr.passphrase_advisory, on the re-render
+            # after an 8-11 passphrase, and test_csr_generate.py pins it there. A context value no template reads
+            # is one a refactor can put back on the page without anyone deciding to.
             "passphrase_min": PASSPHRASE_MIN_LENGTH,
-            "passphrase_recommended": PASSPHRASE_RECOMMENDED_LENGTH,
             "max_sans": settings_of().max_sans,
         }
         base.update(extra)
@@ -1950,6 +1956,18 @@ def _register_routes(app: FastAPI) -> None:
             media_type=_PEM_MEDIA_TYPE,
             body=key_pem,
         )
+        # The combined file the "Download CSR and Private Key" button serves: the brief asked for one control
+        # that yields both artifacts rather than two clicks. MEASURED with openssl on this box before shipping
+        # it — a request followed by a key in one file is read correctly by `openssl req -in` (the request
+        # first) and by `openssl pkey -in` (it finds the key), while `openssl x509 -in` refuses it. So this body
+        # is for carrying both halves to a service that needs the pair, and the two separate artifacts below
+        # stay available for anything expecting one type only. Concatenation adds nothing to hold: these are the
+        # same two strings already in memory, kept in process memory like the other two.
+        bundle_artifact = store.put(
+            filename=f"{stem}-csr-and-key.pem",
+            media_type=_PEM_MEDIA_TYPE,
+            body=f"{csr_pem}{key_pem}",
+        )
         request.session[SESSION_GENERATION_CSR_ID] = csr_artifact.id
         request.session[SESSION_GENERATION_KEY_ID] = key_artifact.id
 
@@ -1959,6 +1977,7 @@ def _register_routes(app: FastAPI) -> None:
             "key_pem": key_pem,
             "csr_download": f"/download/{csr_artifact.id}",
             "key_download": f"/download/{key_artifact.id}",
+            "bundle_download": f"/download/{bundle_artifact.id}",
             "encrypted": passphrase is not None,
             "key_label": spec.label,
             "sans": fields.sans.all_entries(),
@@ -2308,21 +2327,23 @@ def _register_routes(app: FastAPI) -> None:
 
     @app.get("/ca", response_class=HTMLResponse)
     def ca_page(request: Request) -> HTMLResponse:
-        """The CA page, showing the certificate itself next to the facts about it.
+        """The CA page: the facts about this host's root, with the download and copy controls at the top.
 
-        `ca_pem` is passed as an extra rather than added to `context()` because it is a several-hundred-character block
-        that only this page renders: putting it in the common context would put it on `/`, `/issued`, `/settings` and
-        `/about` too, where nothing displays it but every one of them becomes a page a future refactor could leak.
-        It is also the same bytes `GET /ca/certificate` already serves as an attachment, so showing it adds no fact that
-        was not already public on this host — a certificate is public by design, and `describe_ca` has been publishing
-        its subject, serial and fingerprint here already.
+        This handler passes **no extra context** now. Until 0.7.1 it passed `ca_pem` so the page could render
+        the certificate beside the table describing it; the brief moved the download/copy controls to the top of
+        the page, which left a third rendering of bytes this host already serves as an attachment and states in
+        a table — and "a fact shown in two places is
+        two facts that can drift apart" is the reasoning that deleted the home-page CA card in 0.3.0 (page-map §1). So
+        `GET /ca/certificate` is once again the only route on this path that emits certificate bytes, and
+        nothing here does.
+
+        The consequence for the harness is stated where it matters (`tools/e2e_harness.py` §9): parity between
+        "what the page says" and "what the download serves" is now asserted against the serial and fingerprint
+        the table renders, rather than
+        against a second copy of the PEM.
         """
         issue_csrf_token(request)
-        bundle = ca_of()
-        pem = None
-        if bundle is not None:
-            pem = bundle.cert.public_bytes(serialization.Encoding.PEM).decode("ascii")
-        return templates.TemplateResponse(request, "ca_download.html", context(request, ca_pem=pem))
+        return templates.TemplateResponse(request, "ca_download.html", context(request))
 
     @app.get("/ca/certificate")
     def ca_certificate(request: Request) -> Response:

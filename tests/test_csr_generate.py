@@ -396,11 +396,17 @@ def test_downloads_are_links_into_process_memory_not_files(session_client: Scrat
     Asserted as a shape rather than as ids, because the id is random by design -- a predictable one would let one
     session
     guess another's download link. What must hold is that the link is not a file path and not a static asset.
+
+    Three, not two, since the brief asked for one control that yields both artifacts: the CSR, the key, and the
+    pair in one file. The count is asserted rather than "at least two" because an artifact held without a link
+    on the page is bytes in
+    process memory nobody can reach, and a fourth link would be a fourth body held for one generation.
     """
     response = _post(session_client)
 
     links = re.findall(r'href="(/download/[^"]+)"', response.text)
-    assert len(links) == 2, links
+    assert len(links) == 3, links
+    assert len(set(links)) == 3, links
     assert all(link.count("/") == 2 for link in links), links
     assert not any(link.endswith((".pem", ".key")) for link in links), links
 
@@ -415,14 +421,48 @@ def test_both_downloads_serve_the_body_that_was_shown(session_client: ScratchCli
     shown_csr = _block(response.text, "CERTIFICATE REQUEST")
     shown_key = _block(response.text, "PRIVATE KEY")
 
-    links = re.findall(r'href="(/download/[^"]+)"', response.text)
-    bodies = [session_client.get(link) for link in links]
+    bodies = [session_client.get(link) for link in re.findall(r'href="(/download/[^"]+)"', response.text)]
     assert all(body.status_code == 200 for body in bodies)
 
     csr_body = next(body.text for body in bodies if "CERTIFICATE REQUEST" in body.text)
-    key_body = next(body.text for body in bodies if "PRIVATE KEY" in body.text)
+    key_body = next(body.text for body in bodies if body.text.count("PRIVATE KEY") == 2)
     assert _block(csr_body, "CERTIFICATE REQUEST") == shown_csr
     assert _block(key_body, "PRIVATE KEY") == shown_key
+
+
+def test_the_combined_download_holds_this_generation_request_and_key(session_client: ScratchClient) -> None:
+    """The one file the top-of-page button offers is *this* request and *this* key, concatenated.
+
+    Three things have to be true about a combined artifact and only the first is obvious from its name: it carries
+    both bodies rather than a re-generation; the pair belongs to this generation -- a key that does not match the
+    request beside it is what `test_the_generated_csr_is_a_valid_request_for_the_key_it_ships_with` exists to catch,
+    asserted here on the file an operator actually saves -- and it holds nothing else, because a third block in a
+    file named `-csr-and-key.pem` gets installed somewhere by someone who trusted the name.
+
+    The order is pinned rather than assumed: MEASURED with openssl on this box, `openssl req -in` reads the request and
+    `openssl pkey -in` finds the key when the request comes first, while `openssl x509 -in` refuses the file
+    either way. A key-first file would satisfy those two commands just as well and be a different file, so
+    "request first" is a decision.
+    """
+    response = _post(session_client)
+    shown_csr = _block(response.text, "CERTIFICATE REQUEST")
+    shown_key = _block(response.text, "PRIVATE KEY")
+
+    bodies = [session_client.get(link) for link in re.findall(r'href="(/download/[^"]+)"', response.text)]
+    combined = next(body for body in bodies if "csr-and-key" in body.headers.get("content-disposition", ""))
+
+    assert combined.status_code == 200
+    assert 'filename="server-internal-csr-and-key.pem"' in combined.headers["content-disposition"]
+    assert _block(combined.text, "CERTIFICATE REQUEST") == shown_csr
+    assert _block(combined.text, "PRIVATE KEY") == shown_key
+    assert combined.text.index("CERTIFICATE REQUEST") < combined.text.index("PRIVATE KEY")
+    assert combined.text.count("-----BEGIN") == 2
+
+    request = x509.load_pem_x509_csr(shown_csr.encode("ascii"))
+    private_key = load_pem_private_key(shown_key.encode("ascii"), password=None)
+    left = request.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
+    right = private_key.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
+    assert left == right
 
 
 def test_two_generations_behind_similar_links_are_different_keys(session_client: ScratchClient) -> None:

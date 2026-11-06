@@ -31,6 +31,42 @@ release that does not exist.
 
 ### Changed
 
+- **GUI pass on `/csr/generate` and `/ca`, to the operator's brief.** `/csr/generate` is retitled *Generate CSR and Private
+  Key* with "Key is only shown once, it is not stored." under it; its Subject and Key sections are now a blue
+  `.section-heading` outside a `.card.settings-section` — `/settings`' styling, the `<fieldset>`/`<legend>` pair it had carried
+  since 0.1.0 removed — and its fields carry the X.501 names an operator sees in a certificate viewer (`Common Name (CN)`,
+  `Subject Alternative Names (SAN)`, `Organisation (O)`, `Organisation Unit (OU)`, `Country Code (C)`, `State (S)`,
+  `Location (L)`, `Email (E)`) with the hint lines the brief dictated. The internal field names, and therefore every validation
+  reason, are unchanged: a refusal still reads `country must be exactly two letters`, beside a box labelled `Country Code (C)`.
+  On a successful submit three capsule controls sit at the top of the page — `Download CSR and Private Key`,
+  `Copy CSR to clipboard`, `Copy Private Key to clipboard` — styled like `/issued`'s green status chips. The two PEM blocks stay
+  on the page: they are what `test_csr_generate.py` and the harness read to prove the downloads serve the bytes that were shown,
+  and a `<pre>` is the flow that works when a browser refuses clipboard access.
+- **A third one-shot artifact: request + key in one file.** `POST /csr/generate` now also holds
+  `<stem>-csr-and-key.pem` in process memory (request block first, then key), which is what the new top-of-page download serves.
+  **MEASURED with openssl on this box before shipping it:** such a file is read by `openssl req -in` and by `openssl pkey -in`,
+  while `openssl x509 -in` refuses it — so the order is pinned by a test rather than assumed, alongside "exactly two blocks" and
+  "this generation's key matches this generation's request". Nothing is written to disk: it is a third `store.put` of two strings
+  already in memory, and the data-dir tree hash still comes out unchanged.
+- **`/ca` renders no certificate bytes.** The page is titled *Root CA Certificate* with no lede under it; its facts card is
+  titled with this root's own Common Name in blue, outside the card, and Install instructions moved outside its card the same way.
+  `download root-CA cert` and `copy to clipboard` sit at the top of the page, and `The certificate (PEM)` block was deleted — with
+  the controls at the top, one page was offering the same root three times. `app.ca_page` passes no extra context any more.
+  The copy button fetches `/ca/certificate` (`app.js`'s new `wireCopyUrl`) rather than copying text off the page, and says so when
+  a browser refuses, because there is nothing on screen to select.
+- **The Key hint is now one derived number, and one context value is gone.** The brief replaced this page's passphrase paragraph with
+  "Minimum 8 characters"; that sentence is rendered as `Minimum {{ passphrase_min }} characters`, so the shipped text is byte-identical to
+  the brief while the floor still comes from `csr.PASSPHRASE_MIN_LENGTH` — a literal `8` in the template would be a second copy of that constant.
+  `generate_context` therefore keeps `passphrase_min` and **drops `passphrase_recommended`**: no part of this page states a recommendation any
+  more, and the 12-or-more advice is still said where it always was — by `csr.passphrase_advisory`, on the re-render after an 8–11 passphrase,
+  pinned by `test_csr_generate.py::test_a_passphrase_at_the_floor_is_accepted_and_advised`. A context value no template reads is one a refactor
+  can put back on the page without anyone deciding to.
+- **Harness counts moved 310 → 328** (`.venv/bin/python tools/e2e_harness.py`, `reports/harness-ledger.json`): §2 20 → 27,
+  §5 11 → 19, §9 20 → 23. §9's parity assertion inverted — it used to hash the DER inside `id="pem-ca"` against the download's DER;
+  it now reads the served certificate's serial and colon-grouped SHA-256 fingerprint out of its own DER and requires both on the
+  page, which asks a parser instead of comparing two copies of one string. `GET /static/style.css` re-measured on this build:
+  **31,766 B**, sha256 `8b4d507fb6660b…`, served byte-identical to the file.
+
 - **The measurement-history layer was deleted, together with the two gates that policed it.** Removed:
   `docs/measurement-history.md`, `docs/history/` (nine files), `docs/CHANGE_POLICY.md`, `tools/check_docs.py`,
   `tools/check_docstrings.py`, `tests/test_docstrings.py`, and the *Release evidence* subsection of `[0.7.1]` — about

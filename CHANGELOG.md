@@ -102,11 +102,13 @@ address or form fields, no `MYPKI_*` knob was added, no certificate profile in `
 `issued.db` changed shape. The MINOR test ("a new page, a new `MYPKI_*` knob, a new CLI flag, a new profile field") is met by
 none of its four terms, which is why the number moves in the last place rather than the middle one. `__version__` is now 0.7.1,
 and this heading is what makes that legal: the rule is that the number and the section are written **in the same pass**, so
-`tools/check_version.py` reads a release rather than drift. Its measured evidence landed in one further pass, at the cut: the
-*Release evidence* subsection at the end of this section records the gates, the suite and the packaging checks this release was
-made against, and the two harness runs are recorded in _docs/measurement-history.md_ under
-*0.7.1 release evidence* — with their counts carried by `reports/harness-ledger.md` (since deleted; the harness writes
-`reports/harness-ledger.json` itself now) rather than by anything written here.
+`tools/check_version.py` reads a release rather than drift. Its measured evidence landed in one further pass, at the cut: a
+*Release evidence* subsection closed this section, recording the gates, the suite and the packaging checks this release was made
+against, with the two harness runs held in _docs/measurement-history.md_ under *0.7.1 release evidence* and their counts in
+`reports/harness-ledger.md`. **All three were removed by the pass recorded under [Unreleased].** Nothing here asks you to open a
+file that no longer exists: read the subsection with `git show bc0031b^:CHANGELOG.md`, the dated records with
+`git show bc0031b^:docs/measurement-history.md`, and note that `reports/harness-ledger.md` was never tracked in git at all — the
+harness writes `reports/harness-ledger.json` itself now, which is why its counts are not lost, only its prose.
 
 ### Added
 
@@ -161,9 +163,10 @@ made against, and the two harness runs are recorded in _docs/measurement-history
   carries a 403 as "the sign page with its own form still on it", and §3's panel sentence states that refused extensions are
   answered at 403 **on this same page**.
 - **Release-time prose was moved out of `src/` docstrings rather than deleted**, and the move is recorded verbatim in
-  _docs/history/narrative.md_: the version citations and one-run probe notes that were *not*
-  already carried by a frozen history entry are copied there byte for byte, each with the docstring it belonged to, before the
-  living sentence was rewritten to state the invariant instead. The rewrite touched only docstrings and full-line comments — no
+  _docs/history/narrative.md_ (since deleted; read it with `git show bc0031b^:docs/history/narrative.md`): the version citations
+  and one-run probe notes that were *not* already carried by a frozen history entry are copied there byte for byte, each with the
+  docstring it belonged to, before the living sentence was rewritten to state the invariant instead. The rewrite touched only
+  docstrings and full-line comments — no
   behaviour, no status code and no user-visible string moved, so this is the *Wording* class and neither harness script changed.
   `app.py`'s module-docstring heading keeps its name and drops the version tag beside it, which is what lets
   `ERROR_SURFACE_RULE` keep citing that heading while `tests/test_packaging.py` still counts exactly two spellings of it in the
@@ -224,8 +227,8 @@ made against, and the two harness runs are recorded in _docs/measurement-history
   proves nothing was staged); plus the sign page's *"CSR requesting CA powers will be refused."* sentence, where a
   renamed-heading assertion replaced a needle rather than adding one. A **control run** of the extracted shipped zip reproduced
   0.7.0's own ledger the same day, so the movement is a measured delta between two trees and not an arithmetic expectation. The
-  dated records of those runs, and of the pair this release was actually cut against on 2026-11-05, are in
-  _docs/measurement-history.md_ under *0.7.1 release evidence*.
+  dated records of those runs, and of the pair this release was actually cut against on 2026-11-05, were held in
+  _docs/measurement-history.md_ under *0.7.1 release evidence* (since deleted; `git show bc0031b^:docs/measurement-history.md`).
 - **`tests/test_docstrings.py` (new) pins the prose gate from the test side.** It asserts zero findings over the real `src/`, a
   passing `--self-test`, that a line breaking all three rules is reported three times rather than collapsed, that the allow
   marker excuses its own line and only that line, that exit **1** and exit **0** stay distinguishable end-to-end through `main`,
@@ -259,7 +262,8 @@ made against, and the two harness runs are recorded in _docs/measurement-history
   heading (now *Error surfaces*), and SMOKE_TESTING.md's §16 row — names the constant instead of retyping the sentence.
   Rewording the docstring is then a one-file edit rather than the multi-file sweep the bullet above exists to reconcile.
   The phrase itself now survives in three kinds of place, and only these: `app.py`'s heading plus the constant's own value
-  (the two spellings that must agree), `docs/history/0.2.0.md` where it records what 0.2.0 said and is not editable, and
+  (the two spellings that must agree), `docs/history/0.2.0.md` (since deleted; `git show bc0031b^:docs/history/0.2.0.md`) where it
+  records what 0.2.0 said and was not editable, and
   this file's changelog entries — including the one above — which are records of past passes rather than live citations.
   `tests/test_packaging.py` guards both ends mechanically: the constant is assigned exactly once in `app.py`, its value is
   quoted there exactly twice (heading and assignment), and no other Python file under `src/` or `tests/` contains the phrase
@@ -282,7 +286,7 @@ made against, and the two harness runs are recorded in _docs/measurement-history
   parsing patterns, prints one row per section with each side's PASS count, and exits **1** on a missing section, a renamed
   heading or a count that differs by one, printing `parity: NO` for the pair it just compared. Neither tool's output is copied
   into this file: **NO counts** from either harness are quoted here, because per-section totals are measurements of one run and
-  `reports/harness-ledger.md` is what carries them.
+  `reports/harness-ledger.md` is what carried them (never tracked in git; the harness writes `reports/harness-ledger.json` now).
 
 ## [0.7.0] - 2026-11-02
 
@@ -303,12 +307,13 @@ no re-issue (that was an explicit product decision, not an omission), which is a
 `error 44 at 0 depth lookup: different CRL scope` for every such certificate, i.e. this CA's own history. What did **not**
 change is the client side of revocation at all: no fetching, no enforcement, no delete, and a revoked certificate stays
 trusted by clients that never consult an artifact until it expires. The gate this release was cut against, and the two harness runs that
-re-measured it on the released tree (2026-11-02, each against its own freshly minted tree and data dir), are recorded in full — totals,
-coverage, per-section ledger and log layout — in _docs/measurement-history.md_ under *0.7.0 release evidence*.
+re-measured it on the released tree (2026-11-02, each against its own freshly minted tree and data dir), were recorded in full — totals,
+coverage, per-section ledger and log layout — in _docs/measurement-history.md_ under *0.7.0 release evidence* (since deleted;
+`git show bc0031b^:docs/measurement-history.md`).
 Against 0.6.0's measured total the release is **+37**: +36 in §11, all of it the new STEP F block (CRL + OCSP, asserted after the
 revocations that create its subject), and +1 in §12 (`/about`'s rewritten revocation caveat now asserts two sentences where the dead one
-asserted one). `openssl` was still never invoked by either harness. The 0.6.0 run it is compared against is kept as history in
-_docs/history/0.6.0.md_ rather than overwritten here.
+asserted one). `openssl` was still never invoked by either harness. The 0.6.0 run it is compared against was kept as history in
+_docs/history/0.6.0.md_ (since deleted; `git show bc0031b^:docs/history/0.6.0.md`) rather than overwritten here.
 
 ### Added
 
@@ -400,9 +405,10 @@ _docs/history/0.6.0.md_ rather than overwritten here.
   paths. **Both harnesses were then run from the extracted tree against their own freshly minted data dirs** (2026-11-03, `/tmp/s11b/run_harness_x070.sh`
   retargeted at `<extract>`): `.sh` on `http://127.0.0.1:8621`, `.ps1` on `:8623` under `/tmp/pwsh/pwsh` 7.6.9, plain `init-ca` (CN=mypki Root CA,
   RSA 3072), `HOME` + the four `XDG_*` redirected, `MYPKI_CONFIG_DIR`/`APPDATA` unset, no `--base` / `-Base`, server cwd `<extract>/src`. Both exited 0, and
-  their full ledgers — totals, per-section counts and heading positions — are in
-  _docs/measurement-history.md_ under *Both harnesses run from the extracted shipped zip*. The extracted ledger is identical
-  to the `build/` ledger recorded there, which is what makes the zip a copy of the tested tree rather than a rebuild of it.
+  their full ledgers — totals, per-section counts and heading positions — were held in
+  _docs/measurement-history.md_ under *Both harnesses run from the extracted shipped zip* (since deleted;
+  `git show bc0031b^:docs/measurement-history.md`). The extracted ledger was identical to the `build/` ledger recorded there,
+  which is what makes the zip a copy of the tested tree rather than a rebuild of it.
 - **One file in the frozen archive is not the file in the build tree: `CHANGELOG.md` itself.** The copy inside
   `mypki-0.7.0.zip` (1,146 lines / 117,061 B) lacks the `## [0.6.0] - 2026-11-01` heading this QA pass
   restored above — the archive was cut before it was re-attached — so in that copy the 0.6.0 narrative and
@@ -422,18 +428,27 @@ coverage of certificates issued before 0.7.0; and no way to make a client that n
 
 ## Release index
 
-Everything below 0.7.0 is frozen history and lives one file per release under `docs/history/` - moved out of this
-file so a change to the current build never has to be reconciled against a previous release's measurements. Frozen
-files are append-only and are not policed by `tools/check_docs.py`.
+Everything below 0.7.0 was frozen history held one file per release under `docs/history/`, moved out of this file so a change
+to the current build never had to be reconciled against a previous release's measurements. **That directory was deleted by the
+pass recorded under [Unreleased], so no path in the list below opens today.** The bold labels link to each release's tag; the
+prose is still recoverable, one command per release, from the commit that preceded the deletion:
 
-- **[0.6.0]** - 2026-11-01 - `docs/history/0.6.0.md`
-- **[0.5.2]** - 2026-10-31 - `docs/history/0.5.2.md`
-- **[0.5.1]** - 2026-10-31 - `docs/history/0.5.1.md`
-- **[0.5.0]** - 2026-10-30 - `docs/history/0.5.0.md`
-- **[0.4.0]** - 2026-10-29 - `docs/history/0.4.0.md`
-- **[0.3.0]** - 2026-10-29 - `docs/history/0.3.0.md`
-- **[0.2.0]** - 2026-10-28 - `docs/history/0.2.0.md`
-- **[0.1.0]** - 2026-10-26 - `docs/history/0.1.0.md`
+```bash
+git show bc0031b^:docs/history/0.6.0.md   # substitute the version for any row below
+```
+
+Frozen files were append-only and were not policed by `tools/check_docs.py`; that checker was deleted in the same pass, which is
+why nothing here is enforced any more. The 0.7.1 and 0.7.0 sections above are this file's own text and remain readable in place —
+only the per-release *files* are gone.
+
+- **[0.6.0]** - 2026-11-01 - `bc0031b^:docs/history/0.6.0.md`
+- **[0.5.2]** - 2026-10-31 - `bc0031b^:docs/history/0.5.2.md`
+- **[0.5.1]** - 2026-10-31 - `bc0031b^:docs/history/0.5.1.md`
+- **[0.5.0]** - 2026-10-30 - `bc0031b^:docs/history/0.5.0.md`
+- **[0.4.0]** - 2026-10-29 - `bc0031b^:docs/history/0.4.0.md`
+- **[0.3.0]** - 2026-10-29 - `bc0031b^:docs/history/0.3.0.md`
+- **[0.2.0]** - 2026-10-28 - `bc0031b^:docs/history/0.2.0.md`
+- **[0.1.0]** - 2026-10-26 - `bc0031b^:docs/history/0.1.0.md`
 
 [Unreleased]: https://github.com/madmickstar/mypki/compare/v0.7.1...HEAD
 [0.7.1]: https://github.com/madmickstar/mypki/releases/tag/v0.7.1

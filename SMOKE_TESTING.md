@@ -840,10 +840,10 @@ the ledger file is the current measurement and nothing claims to be the historic
   the two seeded ones revoked in its multi-select batch, plus a fourth issued active by §13 after §11 finished. That
   four-record walk is
   what every pre-0.6.0 tree measured — `/tmp/pkismoke-040`, `/tmp/pkismoke-050f`, `/tmp/pkismoke-050g`, `/tmp/pkismoke-050h`,
-  `/tmp/pkismoke-051d` and `/tmp/pkismoke-051e` each hold **4 records / 3 revoked / 1 active** — while 0.6.0 already ends
-  at five:
-  `/tmp/v060/scratch-zsh`, `/tmp/v060/scratch-zps1` and `/tmp/v060/scratch-zshw` each hold **5 records / 3 revoked / 2
-  active**, because its
+  `/tmp/pkismoke-051d` and `/tmp/pkismoke-051e` each **held** **4 records / 3 revoked / 1 active** — all six are among the scratch trees deleted from
+  `/tmp` on 2026-11-05, so that comparison now needs a freshly minted tree rather than those paths. 0.6.0 already ends at five, and its three trees
+  are still here: `/tmp/v060/scratch-zsh`, `/tmp/v060/scratch-zps1` and `/tmp/v060/scratch-zshw` each hold **5 records / 3 revoked / 2 active**
+  (re-read on 2026-11-06 with `mypki info`: unchanged), because its
   §16 consented issue adds the fifth. This build's five therefore matches 0.6.0 by measurement rather than extending it.
   For comparison, a 0.3.0-era run on a directory that had been accumulating since 0.2.0 went 18 active / 6 revoked
   before the walk and 17 active / 9+ revoked after it; those absolute numbers belong to that ledger, not this one,
@@ -875,9 +875,21 @@ the ledger file is the current measurement and nothing claims to be the historic
 - **Scratch litter: this harness cleans up after itself, and the two flags that stop it are documented because they are how you read a run.** A default
   run creates `$(mktemp -d)`-style `/tmp/mypki-e2e.<8 chars>` holding `data/` (a real CA key at `data/ca/ca_key.pem`, mode 0600), `work/` (every fetched
   page, the CRL, the fixtures), `home/`, `xdg/`, `appdata*/`, `config/`, `logs/`, `init-ca.log` and `serve.log`, and removes the whole tree in a `finally`
-  block on every exit path. MEASURED on this box: after green runs `ls -d /tmp/mypki-e2e.*` returns **nothing**, while the shell harnesses' litter is still
-  sitting here — **5** `/tmp/mypki-smoke*` directories, **1.3M**, **3 of them containing a private-key block**, and **38** `/tmp/pkismoke*` directories,
-  **33M**, **all 38 holding a `ca_key.pem`**. That is what "neither one removes it" produced over a year of runs; it is why removal is the default here.
+  block on every exit path. MEASURED on this box: after green runs `ls -d /tmp/mypki-e2e.*` returns **nothing**. The shell
+  harnesses' litter was measured here on 2026-11-05 and then removed: **5** `/tmp/mypki-smoke*` directories (**1.3M**, **3 holding a
+  private-key block**) and **38** `/tmp/pkismoke*` directories (**33M**, **all 38 holding a `ca_key.pem`**). That is what "neither one removes it"
+  produced over a year of runs, and it is why removal is the default here. Those counts are now a dated measurement, not a description
+  of this box — `ls -d /tmp/pkismoke* /tmp/mypki-smoke*` answers *No such file or directory* for both, because 38 real CA private keys in scratch
+  directories is the exact harm this bullet warns about. What `/tmp` holds today is the suite's own scratch, and it holds real keys too:
+  `/tmp/pytest-of-user` is mode `0700` (so nothing under it is world-readable) and keeps pytest's last few numbered basetemps, each of which
+  contains one `ca_key.pem` for every test that minted a CA — measured on 2026-11-06 as **1,742** `ca_key.pem` files across **7** basetemps,
+  **1,735** of them carrying a real private-key block. That number is not citable: it grows with every run and pytest rotates the basetemps,
+  so the fact worth keeping is the mode and the mechanism, not the count. Only **6** key files under all of `/tmp` are mode `000`, one
+  `test_serve_rejects_a_tls_file_0/server.key` per retained basetemp: `tests/test_cli.py` writes a fake TLS key and `chmod`s it to `000` because
+  there is no other portable way to make a file unreadable to its own owner. Alongside them sit **87** `/tmp/tmp????????` directories and the
+  probe trees `/tmp/h060` and `/tmp/v060`, left by ad-hoc temp-dir callers that never removed their tree — **63** `ca_key.pem` files in all,
+  62 of them mode `0600`. So the harness is the only one of the three that removes what it made; the suite and the probes do not, and reading
+  this file on a box that has run `make gate` for a year means reading a `/tmp` full of throwaway CA keys.
   `--work DIR` keeps the tree at a path you chose and `--keep-data` keeps the scratch data dir, and in both cases the harness prints
   `scratch tree kept at <path> (it holds a real CA private key — delete it when you are done reading it)`. MEASURED on such a kept tree: **1.1M**, with
   **4** files containing a private-key block — `work/csr_generate-3.html` (§5's rendered leaf key), `work/inspect-7.html` (the sentinel paste echoed back,

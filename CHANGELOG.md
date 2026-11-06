@@ -72,6 +72,24 @@ release that does not exist.
   **28,827 bytes** (sha256 `3d7a609…`, and the same 28,827 at every commit in this tree), while the extracted 0.7.0 zip holds
   28,152 B (`d4b7468…`): the "re-measured on this build" line had itself been carried over from 0.7.0. No assertion reads a
   stylesheet size, so nothing was catching it — the corrected text states both numbers and names which release each belongs to.
+- **The scratch litter SMOKE_TESTING measured is gone, and its bullet now says when it was true.** The two deleted shell harnesses left **43** trees
+  in `/tmp` on this box — **5** `/tmp/mypki-smoke*` (**1.3M**, 3 holding a private-key block) and **38** `/tmp/pkismoke*` (**33M**, all 38 holding
+  a `ca_key.pem`) — **34M** together, holding **207** key-material files tallied as they were removed, **38** of them real CA private keys (one per
+  `/tmp/pkismoke*` tree): the harm that sentence existed to warn about. The 207 is a deletion-time tally and cannot be re-derived now the trees are
+  gone, so only the directory, size and `ca_key.pem` figures remain checkable. The bullet said this litter "is still sitting here"; it does not, so
+  those counts are labelled as a 2026-11-05 measurement and today's state is stated instead. **63** `ca_key.pem` files survive elsewhere in `/tmp`
+  (62 mode `0600`, 1 mode `0644`) inside probe trees that predate this pass — `/tmp/h060`, `/tmp/v060`, `/tmp/pkid-071`, `/tmp/doccheck*`,
+  `/tmp/sprobe` — plus **87** `/tmp/tmp????????` directories left by `tempfile.mkdtemp` callers that never removed their tree. Those were
+  deliberately not touched: SMOKE_TESTING cites three of them, and a measurement you can still re-run is worth more than a clean `/tmp`. Two claims
+  drafted for this edit failed when measured rather than assumed, and both are recorded here so they do not come back. "79 key-shaped files under
+  `/tmp/pytest-of-user`" was an artefact of `-maxdepth 4`: pytest nests `<basetemp>/<test>/data/ca/ca_key.pem`, below that cut, and the same find
+  at full depth returns over 1,700 — a figure that moves with every run, because `make gate` rotates pytest's basetemps. SMOKE_TESTING therefore
+  records the mode (`0700`) and the mechanism rather than a count, which is also why no citable number belongs here. And the mode-`000` files are
+  not "pytest's unreadable-key cases" in general but one test's fixtures: `test_serve_rejects_a_tls_file_that_exists_but_is_not_readable` in
+  `tests/test_cli.py` writes a fake TLS key and `chmod`s it to `000`, because no other portable route makes a file unreadable to its own owner.
+  Nothing in `tests/` or `tools/e2e_harness.py` reads SMOKE_TESTING.md at runtime (the harness's only `read_text` calls are its own work-dir
+  fixtures, `__init__.py` and the two server logs), so no assertion could have caught any of this — which is the same reason the style.css number
+  above went unnoticed.
 
 ## [0.7.1] - 2026-11-05
 

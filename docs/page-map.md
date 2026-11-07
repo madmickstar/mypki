@@ -5,7 +5,7 @@ Source modules cite it as `page-map §N` in comments, exactly as the reference p
 If code and this file disagree, **this file is wrong** — fix it in the same commit as the code, never silently.
 
 Numbering note: §0 exists because the brief mandates "mypki's own error page" without naming a template for it;
-`templates/error.html` is therefore a stated addition to the brief's tree, not a smuggled one (see README
+`templates/error.html` is therefore a stated addition to the brief's tree, not a smuggled one (see REFERENCE.md
 "Divergences we state out loud").
 
 ---
@@ -301,7 +301,8 @@ pages — because a client learns that URL from a certificate's `AuthorityInfoAc
 | `mypki info [--data-dir]` | CA subject/serial/validity/fingerprint/key spec + issued-record count + resolved data dir. Exit **3** if no CA. |
 
 No `sign`, `revoke`, or `export-key` subcommands, by design: the GUI is the signing surface, `/issued` is where a revocation is
-recorded (§5), and the key must not be exportable (README "Naming"). 0.2.0 added the revoke *control* on `/issued`; it did not
+recorded (§5), and the key must not be exportable (REFERENCE.md "Naming"). 0.2.0 added the revoke *control* on
+`/issued`; it did not
 add a CLI command for it, so there is still exactly one way to sign and one place to mark a record revoked.
 
 ---
@@ -899,7 +900,8 @@ response whose signing certificate is not (1) a locally configured OCSP signing 
 certificate in question**, or (3) a certificate carrying `id-kp-OCSPSigning` issued by that CA. mypki's responder answers under criterion 2 —
 the root is its own responder — so the spec permits this design, and openssl 3.5 does accept it (MEASURED, on a root with no such EKU).
 What is **not** measured here is whether a browser or a Go client insists on criterion 3 anyway; that caveat is stated in words on `/crl`,
-in this file and in README rather than left as an open question. (An earlier draft of this section cited "RFC 6949 §3.6" for the EKU
+in this file and in REFERENCE.md rather than left as an open question. (An earlier draft of this section cited
+"RFC 6949 §3.6" for the EKU
 requirement. RFC 6949 is the RFC Editor model, not OCSP; the citation was wrong and is corrected here rather than carried
 forward.) A delegated responder would mean issuing, storing and rotating a second key for a home-lab CA — accepted as larger
 than the unmeasured risk.

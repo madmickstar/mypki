@@ -11,7 +11,8 @@ Entries come from `IssuedStore.revoked_records()`: rows with `revoked_at_utc IS 
 So a revoked certificate whose own validity has already lapsed is **dropped**. RFC 5280 §5.3.3 permits removing an entry
 only when the CA asserts the certificate will no longer be considered valid, which is defensible here (the certificate
 expires anyway) but reads wrong to a human: "removed from the CRL" sounds like "un-revoked". The honest sentence lives
-on `/crl`, in page-map §14 and in README: *mypki drops a revoked serial from the CRL once that certificate has expired;
+on `/crl`, in page-map §14 and in docs/REFERENCE.md: *mypki drops a revoked serial from the CRL once that certificate
+has expired;
 there is no un-revoke, and the row stays in `issued.db` forever.*
 
 Why `CRLNumber` comes from `count_revoked()` and never from `len(entries)`: entries can **shrink** (the rule above), and

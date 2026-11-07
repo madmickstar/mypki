@@ -31,7 +31,7 @@ from .validators import validate_country, validate_email, validate_printable_fie
 
 log = logging.getLogger("mypki.config")
 
-#: Hard ceiling on `validity_max_days` (page-map §7 + README gotcha 2).
+#: Hard ceiling on `validity_max_days` (page-map §7 + docs/REFERENCE.md gotcha 2).
 #:
 #: It was 825 days for as long as this project had no revocation at all: with nothing to revoke, the validity date was
 #: the *only* bound on a mis-issued certificate, and 825 days also happened to sit inside the window platforms apply to

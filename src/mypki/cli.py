@@ -10,11 +10,13 @@ Subcommands, and why each exists:
             project's `check`/`probe` do: an operator needs to see resolved state from a terminal, on a host whose
             logs they may not have open, without starting a browser.
 
-There is no `sign`, `revoke` or `export-key` subcommand, by design (README "Naming"): the GUI is the signing surface so
+There is no `sign`, `revoke` or `export-key` subcommand, by design (docs/REFERENCE.md "Naming"): the GUI is the
+signing surface so
 validation and the extension profile cannot be bypassed, revocation does not exist here, and an export command would be
 the one place this project could hand out the thing it exists to protect.
 
-Exit codes are part of the interface, documented in the README so a wrapper script never has to parse stderr:
+Exit codes are part of the interface, documented in docs/REFERENCE.md "What it does" so a wrapper script never has
+to parse stderr:
 
   0  success
   1  validation/usage failure (bad CN, bad SAN, invalid key spec, unwritable permissions)
@@ -502,7 +504,8 @@ def cmd_serve(args: argparse.Namespace) -> int:
         # this function. uvicorn logs the error through its own `uvicorn.error` logger, shuts the lifespan down,
         # and calls sys.exit(STARTUP_FAILURE) -- SystemExit(3). SystemExit is not an OSError, so the branch above
         # never ran for the most common real failure of this command: the operator got a bare uvicorn line and
-        # exit 3, while README documents 3 as 'required state missing: no CA found'. **On a real Windows
+        # exit 3, while docs/REFERENCE.md documents 3 as 'required state missing: no CA found'. **On a real
+        # Windows
         # 10 host:** `[Errno 10048] ... only one usage of each socket address ...` then shutdown lines and no
         # mypki message at all -- the same shape as the Linux reproduction.
         if server.started:
@@ -694,7 +697,8 @@ def _separator_hint(text: str, resolved: Path | None = None) -> str:
     (doubled backslashes, which is what an editor or a script that escaped for a shell produces) reaches pydantic
     verbatim as a path containing literal doubled separators. On Windows that is not the path the operator means; on
     any OS it is a path that does not exist. dotenv also honours `\` as an escape inside double quotes, which is why
-    README and `.env.example` tell operators to use forward slashes or *single* backslashes.
+    docs/REFERENCE.md "Serving and exposure" and `.env.example` tell operators to use forward slashes or *single*
+    backslashes.
 
     This takes the **raw configured text**, not `str(path)` — and pathlib collapses
     doubled separators on Windows -- `str(PureWindowsPath("C:\\root_apps\\server.crt"))` is

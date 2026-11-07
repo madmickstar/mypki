@@ -350,7 +350,7 @@ def validity_days(value: object, default: int, minimum: int, maximum: int) -> in
     Never clamped. A request for 1000 days against a ceiling of 825 is an operator who believes this CA can issue a
     three-year certificate; silently issuing 825 leaves them believing they have 1000, which is the kind of
     misunderstanding that ends with a service failing on a date nobody wrote down. The refusal names the knob so the
-    next request goes through `.env` rather than through guesswork (README gotcha 2).
+    next request goes through `.env` rather than through guesswork (docs/REFERENCE.md gotcha 2).
     """
     raw = default if value is None or str(value).strip() == "" else str(value).strip()
     try:

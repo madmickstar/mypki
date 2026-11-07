@@ -3,10 +3,11 @@
 Why this exists: after `pip install mypki` the console script is available, but an operator working inside a virtualenv
 from a source checkout, or one debugging a wheel they just built without installing it, needs a route in that does not
 depend on a script entry being on PATH. Two ways to start the same CLI means one of them can fail without hiding the
-other (README's quick start uses `mypki …`; the module route is what works from a source checkout).
+other (`docs/linux_install.md`, which the README's Quick Start links to, spells the CLI as `mypki …`; the module
+route is what works from a source checkout).
 
 Before this suite grew its subprocess tests, neither route was exercised anywhere in the
-suite: README spells the CLI as `mypki …`, `.github/workflows/ci.yml` never invokes it at all, and
+suite: `docs/linux_install.md` spells the CLI as `mypki …`, `.github/workflows/ci.yml` never invokes it at all, and
 `tools/e2e_harness.py` spawns its own server but reaches it over HTTP rather than through `python -m`. That is the same
 blind spot that let `init-ca --key-type ec` ship broken and unexercised (see CHANGELOG *Fixed*).
 

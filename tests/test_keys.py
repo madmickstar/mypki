@@ -227,7 +227,8 @@ def test_an_unencrypted_key_still_loads_with_no_passphrase_at_all() -> None:
 def test_encrypted_and_unencrypted_pems_of_the_same_key_differ() -> None:
     """A passphrase actually changes the artifact.
 
-    Trivially true, but it is the assertion behind README gotcha 1: if `--encrypt` produced byte-identical output, the
+    Trivially true, but it is the assertion behind docs/REFERENCE.md gotcha 1: if `--encrypt` produced byte-identical
+    output, the
     operator would believe the key file was protected when it was not.
     """
     key = generate_key(KeySpec.from_string("rsa-2048"))

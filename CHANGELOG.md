@@ -27,6 +27,55 @@ check*, which is never a pass. A section below is written **when its release is 
 that has not shipped is exactly what `check_version.py` reports as drift, because it reads to a user as a promise about a
 release that does not exist.
 
+## [Unreleased]
+
+### Changed
+
+- **README is an operator's page again, and the rest of it became `docs/REFERENCE.md`.** README now carries, in this
+  order: the title with `assets/banner.png`, the CI and Ruff badges, one paragraph saying plainly that this is a small
+  browser-based self-hosted PKI app for personal and lab use, not a security product, never for production; then Table of
+  Contents, Features (one-liners, app capability only), Quick Start (a link to `docs/linux_install.md`), Configuration
+  (carried over verbatim), *Where the files live* — promoted from an H3 under Configuration to its own H2, with the
+  `<data>/` map plus a tree of every path `git ls-files` reports at this commit (75) — License, and AI. The nine sections
+  that were doing the explaining (`What it does`, `Two gotchas that will bite you`, `Serving and exposure`, `Logging`,
+  `Divergences we state out loud`, `Known gaps`, `Development`, `Versions and releases`, `Naming`) moved to
+  `docs/REFERENCE.md` essentially verbatim: the two gotchas, gotcha 2's four numbered caveats, the 0/1/2/3 exit-code
+  table, the CRL's `nextUpdate = thisUpdate + 24 h` promise and OCSP's +4 h, the four restart-only knobs, and both
+  measured dependency divergences (`itsdangerous>=2.2`, `httpx2>=2.16`) are all still stated there.
+- **`docs/linux_install.md` and `deploy/mypki.service` are new.** The install guide records `mypki serve`'s flags as
+  measured from `serve --help` (`--host/--port/--ssl-cert/--ssl-key/--data-dir/--passphrase-env/--log-level/--log-file/
+  --no-console-log`), the data-dir precedence (`--data-dir` > `MYPKI_DATA_DIR` > OS default, XDG on Linux), the dotenv
+  layering (`.env`, then `<config>/mypki.env`, with a real environment variable beating both), and the two logging facts
+  a supervisor has to get right: `MYPKI_LOG_FILE` is relative to the working directory, and `log_to_console` defaults to
+  true, so journald sees duplicated lines unless `--no-console-log` is passed. **This container reports
+  `systemctl is-system-running` = `offline`, so the unit was written from those measured facts and never started.**
+  `systemd-analyze verify deploy/mypki.service` was run: exit 1, one finding — `Command /srv/mypki/.venv/bin/mypki is
+  not executable: No such file or directory`, which is the placeholder `ExecStart` path rather than a defect in the unit.
+- **41 citations moved to the documents that now hold the claim.** Across `src/` (12), `tests/` (18),
+  `docs/page-map.md` (3), `SMOKE_TESTING.md` (2) and `Makefile` (2), a citation is routed by what it supports: gotchas,
+  exit codes, the 24 h promise, the restart knobs and the divergences now cite `docs/REFERENCE.md`; the CLI spelling an
+  operator types cites `docs/linux_install.md`; two that support text which stayed in README (`cp .env.example .env`, and
+  the Windows key-protection paragraph) cite README "Configuration" and README "Where the files live". CHANGELOG.md's own
+  nine historical mentions of the README are left as written — they describe states of the tree at the time, and rewriting
+  them would make the history wrong.
+- **The banner generator is in the tree** as `tools/banner/make_banner.py`, so `assets/banner.png` (2890x578, 9860 B,
+  sha256 `f9df99a4…4836cc`) is reproducible rather than an artifact with no recipe. MEASURED: running it with the shipped
+  arguments (font 316, tracking 320, threshold 0.32, TILE 34) writes a file whose sha256 equals the committed banner's,
+  byte for byte. It needed one edit to survive `make lint` — an unpacked `grid` became `_grid` (ruff RUF059), since
+  `tools/` is linted. Note that Pillow is not in `.venv`: regeneration needs an interpreter that has it.
+
+### Packaging
+
+- **`assets`, `docs/REFERENCE.md`, `docs/linux_install.md` and `deploy/mypki.service` joined the sdist `include`** —
+  `pyproject.toml` and `tests/test_packaging.py`'s `REQUIRED_INCLUDES` in the same commit, because those two lists are
+  asserted equal in both directions and a one-sided edit ships an artifact missing something its own documentation links
+  to. The sharp case is the README itself: it embeds `![banner](assets/banner.png)`, so shipping the README without the
+  image ships a broken link; `docs/linux_install.md` links to `../deploy/mypki.service` for the same reason. Two
+  parametrised cases per new entry (`test_every_include_entry_exists_on_disk`,
+  `test_no_include_entry_can_reach_anything_forbidden`) ride along automatically. `FORBIDDEN_PATTERNS` and
+  `REQUIRED_EXCLUDES` are unchanged: a PNG, a `.service` unit and two `.md` files hit no forbidden pattern, and adding an
+  entry to the exclude half without a reason would be the kind of change that quietly stops shipping something useful.
+
 ## [0.7.2] - 2026-11-06
 
 ### Changed

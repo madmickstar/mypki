@@ -968,7 +968,8 @@ def test_an_over_max_validity_is_refused_naming_the_limit_and_writes_no_record(
 
     Clamping is the tempting implementation and the wrong one: an operator who asked for 900 and silently received the
     ceiling believes they hold a certificate valid until a date nobody wrote down. From 0.7.0 this host does publish a
-    CRL and answer OCSP, but validity remains the bound that needs no cooperation from the client (README gotcha 2).
+    CRL and answer OCSP, but validity remains the bound that needs no cooperation from the client
+    (docs/REFERENCE.md gotcha 2).
     The refusal arrives *after* step A succeeded, which is the state worth testing — a staged request must not become
     a record
     just because the confirmation was invalid.

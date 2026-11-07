@@ -157,8 +157,8 @@ def test_dates_are_aware_utc_and_next_update_is_exactly_one_day_on(throwaway_ca:
     assert crl.last_update_utc.tzinfo is not None
     assert crl.next_update_utc == DAY_ONE + CRL_LIFETIME
     assert crl.next_update_utc.tzinfo is not None
-    # Asserted on the constant itself, not only on the dates above: 24 h is a promise `/crl`, README and page-map §14
-    # all repeat, and a change here has to fail somewhere that says which documents now lie.
+    # Asserted on the constant itself, not only on the dates above: 24 h is a promise `/crl`, docs/REFERENCE.md and
+    # page-map §14 all repeat, and a change here has to fail somewhere that says which documents now lie.
     assert CRL_LIFETIME.total_seconds() == 24 * 3600
 
 

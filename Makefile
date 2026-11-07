@@ -1,7 +1,8 @@
 # mypki — every command this project runs, in one place.
 #
 # WHY THIS FILE EXISTS
-#   Until now the commands lived as prose in README.md and docs/CHANGE_POLICY.md, and each pass re-derived them from
+#   Until now the commands lived as prose in README.md (their home is now docs/REFERENCE.md "Development") and
+#   docs/CHANGE_POLICY.md, and each pass re-derived them from
 #   memory. That is where release time went: reconstructing which exact invocation produced a number, and retyping
 #   `--cov-fail-under=85` by hand every run (the floor was never declared in pyproject.toml). A target name is cheaper
 #   to remember than a command line, and a command written once cannot disagree with itself.
@@ -88,8 +89,9 @@ fast:
 # These two files are the whole of it because no test reads doc CONTENT: an AST scan of tests/*.py for read_text,
 # read_bytes and open calls touching a .md path returns zero files (the prose-policing gates `tools/check_docs.py`,
 # `tools/check_docstrings.py` and `tests/test_docstrings.py` were deleted in bc0031b). What survives is two
-# references to doc *paths*: test_packaging.py's REQUIRED_INCLUDES asserts README.md, CHANGELOG.md and
-# docs/page-map.md are in the sdist and exist on disk, and test_version.py asserts CHANGELOG carries this version.
+# references to doc *paths*: test_packaging.py's REQUIRED_INCLUDES asserts README.md, CHANGELOG.md,
+# docs/page-map.md, docs/REFERENCE.md, docs/linux_install.md and assets/banner.png are in the sdist and exist on
+# disk, and test_version.py asserts CHANGELOG carries this version.
 # That is also why a docs-only commit still owes `make gate` once: this target proves those two facts, not that the
 # suite is green.
 #

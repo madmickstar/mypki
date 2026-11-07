@@ -587,8 +587,8 @@ def test_over_max_validity_is_refused_naming_the_knob_and_is_never_clamped(setti
     Clamping is the tempting implementation and it is the wrong one: an operator who asked for 1000 days and silently
     received 825 believes they have a certificate valid until a date nobody wrote down. Validity is also the one
     bound on a wrong certificate that needs no cooperation from the client: this host publishes a CRL and answers
-    OCSP from 0.7.0, but those count only for a client that consults one, and pre-0.7 leaves carry no pointer (README
-    gotcha 2). The
+    OCSP from 0.7.0, but those count only for a client that consults one, and pre-0.7 leaves carry no pointer
+    (docs/REFERENCE.md gotcha 2). The
     message names the knob so the next request goes through `.env` rather than through guesswork.
     """
     maximum = settings.validity_max_days

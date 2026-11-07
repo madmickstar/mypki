@@ -76,6 +76,10 @@ pattern = '^__version__ = "(?P<version>[^"]+)"$'
 packages = ["src/mypki"]
 
 # The sdist names things file by file because the contents differ in kind.
+# `assets` and `deploy/mypki.service` join with the README restructure for the same reason `docs/page-map.md` is
+# here: README.md embeds `![banner](assets/banner.png)`, so an artifact that ships the README and not the image ships
+# a broken link, and docs/linux_install.md links to ../deploy/mypki.service. Shipping a document whose own links point
+# at files the artifact omitted is the failure this list exists to prevent.
 # `tools` is here because `tests` is: tests/test_version.py imports check_version out of tools/, and shipping
 # the suite without the module it imports means the sdist contains a test suite that aborts at collection with
 # ModuleNotFoundError -- which reads to a user as "this release is broken" rather than "this artifact omitted a
@@ -89,10 +93,14 @@ include = [
     "src",
     "tests",
     "tools",
+    "assets",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
     "docs/page-map.md",
+    "docs/REFERENCE.md",
+    "docs/linux_install.md",
+    "deploy/mypki.service",
 ]
 exclude = ["scripts", "logs", "*.pem", "*.key", "*.crt"]
 

@@ -282,7 +282,8 @@ key type RSA-2048).
 - the IP SAN survives as an **IP general name**, not as a DNS entry typed as an IP (mypki refuses the latter outright).
 
 **By hand:** copy both blocks into files before leaving the page. There is no second chance and no recovery command — that is
-README gotcha 1 applied to a leaf key rather than the CA key.
+[docs/REFERENCE.md](docs/REFERENCE.md#two-gotchas-that-will-bite-you) gotcha 1 applied to a leaf key rather than the
+CA key.
 
 ## §6 Sign CSR (page-map §3)
 
@@ -435,7 +436,8 @@ status.)
 
 As of 0.3.0 an active row carries a **checkbox** named `serial_hex`, inside **one bulk form** that wraps the whole table; a
 revoked row carries none, and there is no way to un-revoke. There is still no delete and no export. Revoking records the decision
-on this host and publishes nothing — read §11 and README gotcha 2 before relying on it.
+on this host and publishes nothing — read §11 and [docs/REFERENCE.md](docs/REFERENCE.md#two-gotchas-that-will-bite-you)
+gotcha 2 before relying on it.
 
 The harness counts these shapes rather than trusting that one exists:
 

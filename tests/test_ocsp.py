@@ -17,7 +17,8 @@ Four claims carry this file.
    from its own store: nobody can make this CA sign a statement about a certificate it knows nothing about.
 4. **The root signs its own answers** (U3): `responder_id(NAME, ca_cert)`, `certificates([ca_cert])`, and the signature
    verifies against the CA's public key. The unmeasured half — whether a browser or Go client requires an
-   `id-kp-OCSPSigning` EKU on the responder — is stated on `/crl`, in page-map §15 and in README, not tested here.
+   `id-kp-OCSPSigning` EKU on the responder — is stated on `/crl`, in page-map §15 and in docs/REFERENCE.md, not
+   tested here.
 
 openssl does **not** appear in this file (plan U7; `.github/workflows/ci.yml`'s "NO OpenSSL binary is required
 anywhere"). The openssl-side facts live as MEASURED evidence in CRL_PLAN-0.7.0.md §2: `Response verify OK` against a
@@ -439,7 +440,8 @@ def test_the_responder_is_the_root_certificate_itself(throwaway_ca: CaBundle) ->
 
     The unmeasured half stays unmeasured and is *stated* instead: openssl 3.5 accepted this root, which carries no
     `id-kp-OCSPSigning` EKU (MEASURED, plan §2), while whether a browser or Go client requires that EKU was not tested
-    and cannot be tested from here. `/crl`, page-map §15 and README each say so in words. A delegated responder would
+    and cannot be tested from here. `/crl`, page-map §15 and docs/REFERENCE.md each say so in words. A delegated
+    responder would
     mean issuing, storing and rotating a second key for a home-lab CA — a cost larger than the unmeasured risk.
     """
     request = _request(throwaway_ca, int("cafe0008", 16))

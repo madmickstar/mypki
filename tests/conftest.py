@@ -98,7 +98,7 @@ def _no_stray_env_file(tmp_path: Path) -> Iterator[None]:
     `Settings` declares `env_file=".env"` (config.py), and pydantic-settings resolves that relative to the
     **current working directory**. That is correct behaviour for an operator and a hermeticity hole for a test
     suite: a `.env` in the repository root silently re-defines whichever default a test happens to be asserting.
-    **MEASURED on a real Windows 10 host:** an operator following this project's own README (`cp .env.example
+    **MEASURED on a real Windows 10 host:** an operator following README "Configuration" (`cp .env.example
     .env`, then set `MYPKI_HOST=0.0.0.0`) turned two green tests red, with failures that read like path bugs in
     the product -- `'https://127.0.0.1:8443'` missing from a banner that said `https://0.0.0.0:8443`, and
     `cannot bind 127.0.0.1:8443` missing from an error naming `0.0.0.0`. Reproduced on Linux with a one-line

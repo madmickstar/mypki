@@ -1,0 +1,25 @@
+[Unit]
+Description=mypki root CA and certificate-signing web app (0.7.2)
+Documentation=https://github.com/madmickstar/mypki/blob/main/docs/linux_install.md
+After=network-online.target
+Wants=network-online.target
+
+# Placeholder paths: this unit is a template, not a measured install. docs/linux_install.md says which parts
+# are examples and which parts are facts taken from `mypki serve --help`, src/mypki/paths.py and
+# src/mypki/logsetup.py. It was never started here — `systemctl is-system-running` on the box that wrote it
+# answers `offline`.
+[Service]
+Type=simple
+ExecStart=/srv/mypki/.venv/bin/mypki serve --host 127.0.0.1 --port 8443 --data-dir /var/lib/mypki \
+    --log-level INFO --log-file logs/mypki.log --no-console-log
+WorkingDirectory=/var/lib/mypki
+Environment=MYPKI_DATA_DIR=/var/lib/mypki
+
+# The CA private key is read once at startup and never re-read per request, so this unit must NOT start a second
+# worker: mypki's log rotation (`MYPKI_LOG_MAX_BYTES * (MYPKI_LOG_BACKUP_COUNT + 1)`) is per-process, and two
+# processes sharing one log file each rotate it under their own ceiling. One process per log file.
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

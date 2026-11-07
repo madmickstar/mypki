@@ -254,9 +254,8 @@ def test_the_ca_entry_in_the_chain_is_byte_equal_to_the_bundle_certificate(chain
 
     Compared as DER rather than PEM text on purpose: two spellings of one certificate can differ in armour line width
     while the bytes are identical (see `_rearmour`'s measured behaviour in `csr.py`), and conversely a visually similar
-    file whose DER differs is exactly the archive/restore mix-up `key_matches_certificate` exists to catch (README
-    gotcha
-    1). This is what makes "install the chain" mean installing one specific root.
+    file whose DER differs is exactly the archive/restore mix-up `key_matches_certificate` exists to catch
+    (docs/REFERENCE.md gotcha 1). This is what makes "install the chain" mean installing one specific root.
     """
     certs = list(x509.load_pem_x509_certificates(issued.chain_pem.encode("ascii")))
 

@@ -42,10 +42,14 @@ REQUIRED_INCLUDES = [
     "src",
     "tests",
     "tools",
+    "assets",
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
     "docs/page-map.md",
+    "docs/REFERENCE.md",
+    "docs/linux_install.md",
+    "deploy/mypki.service",
 ]
 
 #: What may never appear in an artifact, matched against the *relative* path of every file each include entry covers.
@@ -437,7 +441,8 @@ def test_python_dash_m_is_a_working_route_to_the_cli(tmp_path: Path) -> None:
 
 
 def test_the_console_script_route_reports_the_same_version(tmp_path: Path) -> None:
-    """README's quick start (`mypki init-ca`, `mypki serve`) resolves to the same CLI as `python -m mypki`.
+    """`docs/linux_install.md`'s quick start (`mypki init-ca`, `mypki serve`) resolves to the same CLI as
+    `python -m mypki`.
 
     `[project.scripts] mypki = "mypki.cli:main"` is a claim about the built artifact, and this is the only test that
     checks it by running the thing. The script is looked up next to `sys.executable` because that is where pip puts it

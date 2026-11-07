@@ -4,7 +4,7 @@ Why this package exists: running an internal CA usually means either a heavyweig
 `openssl` invocations. mypki collapses that to one root key on disk, seven pages in one sidebar nav and three CLI
 commands, so one operator can issue properly-profiled X.509 certificates on Linux or Windows without leaving Python's
 `cryptography` library. What it deliberately is *not*: an ACME/SCEP/EST service, a multi-tenant CA, or a REST API (see
-README "Known gaps").
+docs/REFERENCE.md "Known gaps").
 
 `__version__` here is the single source of truth for the whole release chain -- pyproject.toml declares
 `dynamic = ["version"]`, hatchling reads exactly this line by static analysis, CHANGELOG.md must carry a section

@@ -3052,7 +3052,7 @@ def _register_routes(app: FastAPI) -> None:
     # earlier would sit in front of a future /static/... page. base.html reaches this via url_for('static'), which
     # is what
     # makes the stylesheet link follow `root_path` when nginx/Caddy serves mypki under a sub-path (the recommended
-    # deployment in README "Serving and exposure").
+    # deployment in docs/REFERENCE.md "Serving and exposure").
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 

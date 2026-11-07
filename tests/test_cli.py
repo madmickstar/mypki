@@ -321,7 +321,7 @@ def test_init_ca_writes_nothing_to_the_database(tmp_path: Path) -> None:
 
 
 def test_init_ca_refuses_to_overwrite_and_names_the_flag(tmp_path: Path) -> None:
-    """Exit **2**, on stderr, quoting the existing file and `--force` (page-map §6, README exit codes).
+    """Exit **2**, on stderr, quoting the existing file and `--force` (page-map §6, docs/REFERENCE.md exit codes).
 
     The exit code is the contract a wrapper script reads: "already there" must be distinguishable from "broke", and
     the message has to carry the override rather than make the operator guess at one.
@@ -344,7 +344,7 @@ def test_init_ca_refuses_when_only_the_key_exists(tmp_path: Path) -> None:
 
     One mutation from the previous test: the certificate is gone and the key is not. The pair is what makes a CA, so
     silently minting a new certificate next to an orphaned key would produce a host whose `load_ca` fails chain checks
-    later (README gotcha 1).
+    later (docs/REFERENCE.md gotcha 1).
     """
     root = tmp_path / "data"
     _init_ec(root)
@@ -579,7 +579,7 @@ def test_encrypted_key_never_contains_the_passphrase_as_plain_text(
     """The file on disk is PKCS#8-encrypted; the passphrase is not recoverable by reading it.
 
     A cheap check with a high value: if `--encrypt` ever regressed to emitting a plain key while *reporting* an
-    encrypted one, this fails on the bytes rather than on the message (README gotcha 1).
+    encrypted one, this fails on the bytes rather than on the message (docs/REFERENCE.md gotcha 1).
     """
     monkeypatch.setenv("MYPKI_CA_PASSPHRASE", PASSPHRASE)
     root = tmp_path / "data"
@@ -1060,7 +1060,8 @@ def test_a_doubled_separator_from_the_environment_is_named_not_bound(
     -- doubled separators intact -- and so does a real environment variable; the wrap validator sees both before
     `Path` rewrites them. A **quoted** dotenv value (`KEY="C:\\root_apps\\server.crt"`) is the one case that arrives
     *un* doubled, because dotenv honours `\` as an escape inside double quotes: MEASURED, single separators. That is
-    why README and `.env.example` tell operators to use forward slashes or single backslashes, and why this hint is
+    why docs/REFERENCE.md "Serving and exposure" and `.env.example` tell operators to use forward slashes or single
+    backslashes, and why this hint is
     advice rather than a repair mypki performs on their behalf.
 
     The healthy half of the pair comes from `_server_pair`, so exactly one knob is at fault in each run and the message
@@ -1508,7 +1509,8 @@ def test_serve_reports_a_real_uvicorn_startup_failure(tmp_path: Path, monkeypatc
     **MEASURED on a real Windows 10 host:** `mypki serve --port 8443` against an occupied port printed
     `[Errno 10048] error while attempting to bind ... only one usage of each socket address` plus uvicorn's
     shutdown lines, and mypki added *nothing* of its own. On Linux the same command exits **3** with no
-    `cannot bind` line at all -- while README documents 3 as "required state missing: no CA found", which is a
+    `cannot bind` line at all -- while docs/REFERENCE.md documents 3 as "required state missing: no CA found", which
+    is a
     different problem with a different fix. The operator's only clue was a uvicorn log line, and the exit code
     lied about what had happened.
 
@@ -1675,7 +1677,7 @@ def test_info_reports_a_missing_key_as_missing(tmp_path: Path) -> None:
 
 
 def test_no_subcommand_is_an_argparse_usage_error_with_code_two() -> None:
-    """`mypki` alone exits 2 and says which argument is missing (README exit codes)."""
+    """`mypki` alone exits 2 and says which argument is missing (docs/REFERENCE.md exit codes)."""
     result = _run()
 
     assert result.code == cli.EXIT_REFUSED  # argparse's own usage exit, same code as a refusal by coincidence
@@ -1695,7 +1697,7 @@ def test_version_flag_prints_the_package_version_and_exits_zero() -> None:
 
 
 def test_unknown_subcommand_is_a_usage_error() -> None:
-    """`mypki sign` does not exist and says so with exit 2 rather than a traceback (README "Naming")."""
+    """`mypki sign` does not exist and says so with exit 2 rather than a traceback (docs/REFERENCE.md "Naming")."""
     result = _run("sign", "--csr", "whatever")
 
     assert result.code == cli.EXIT_REFUSED
@@ -1759,7 +1761,8 @@ def test_build_parser_exposes_the_documented_flag_surface() -> None:
 
 
 def test_no_subcommand_ever_advertises_sign_revoke_or_export() -> None:
-    """The absence is asserted, because "there is no `export-key`" is a security claim (README "Naming")."""
+    """The absence is asserted, because "there is no `export-key`" is a security claim (docs/REFERENCE.md
+    "Naming")."""
     parser = cli.build_parser()
 
     choices = parser._subparsers._group_actions[0].choices  # type: ignore[union-attr]

@@ -399,7 +399,7 @@ def test_a_paste_of_the_wrong_artifact_says_what_it_found(leaf_key: rsa.RSAPriva
     """Three artifacts an operator genuinely confuses, each named in its own refusal.
 
     "Invalid CSR" would be true and useless: a pasted certificate needs to be re-requested, a pasted private key means
-    the operator has the wrong file entirely, and mypki does neither of those things (README "Naming").
+    the operator has the wrong file entirely, and mypki does neither of those things (docs/REFERENCE.md "Naming").
     """
     if kind == "CERTIFICATE":
         now = dt.datetime.now(dt.timezone.utc)

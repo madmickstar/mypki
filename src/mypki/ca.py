@@ -108,7 +108,8 @@ class InitCaResult:
 
 
 def _is_posix() -> bool:
-    """Whether POSIX permission semantics apply. Windows gets its own story (page-map §8), stated in the README."""
+    """Whether POSIX permission semantics apply. Windows gets its own story (page-map §8), stated in README
+    "Where the files live"."""
     return os.name == "posix"
 
 
@@ -416,7 +417,8 @@ def key_matches_certificate(
     same modulus are not `==` in cryptography, so the only honest comparison is over their serialised form. The failure
     this catches is an archive/restore mix-up -- a `ca_key.pem` from one init sitting next to a `ca_cert.pem` from
     another,
-    which would otherwise produce signatures that fail chain verification on every client (see README gotcha 1).
+    which would otherwise produce signatures that fail chain verification on every client (see docs/REFERENCE.md
+    gotcha 1).
 
     `None` is part of the parameter type because `CaBundle.key` is Optional by design (page-map §1): "this host has no
     key" is an answer this function can give directly, rather than an AttributeError it would have to swallow. The

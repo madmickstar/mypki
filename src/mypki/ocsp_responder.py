@@ -52,7 +52,8 @@ Why the responder **is** the root CA (U3)
 No delegated responder certificate is issued and no CA re-issue is needed: the root already carries `crl_sign=True`
 (`ca.py`). openssl verified a response signed by a root that carries **no `id-kp-OCSPSigning` EKU**.
 Whether a browser or a Go client requires that EKU is **not measured**, and this module does not pretend otherwise — the
-caveat is written on `/crl`, in page-map §15 and in README. A delegated responder would mean issuing, storing and
+caveat is written on `/crl`, in page-map §15 and in docs/REFERENCE.md. A delegated responder would mean issuing,
+storing and
 rotating a second key for a home-lab CA; that cost was accepted as larger than the unmeasured risk.
 
 What this module does **not** do: it does not read any key file (`app.py` hands in an already-loaded `CaBundle`, loaded

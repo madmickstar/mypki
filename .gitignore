@@ -56,6 +56,18 @@ desktop.ini
 .env.*
 !.env.example
 
+# ---------------------------------------------------------------- gate stamp
+# `.gate-ready` is written by `make ready` and read by `make gate`: one line naming the tree that the next gate is
+# allowed to measure (HEAD^{tree}, a digest over the contents of every listed path, and the tracked path count). It must
+# stay ignored, and not only for tidiness — re-measured on 2026-11-08 with every other file held constant: putting
+# `.gate-ready` back in the list `git ls-files --cached --exclude-standard --others` answers grows the path count 78 -> 79
+# and changes the digest half (reproduce it by adding a `!/.gate-ready` line here, running `tools/tree_manifest.py
+# --fingerprint`, then deleting the line — the count and digest both return). No digest hex is quoted, because a hex quoted in prose is false the moment any other file in the
+# digest changes — the same staleness this repository's generated README block exists to avoid. A gate that stamps its own
+# tree would invalidate its own stamp, and README's regenerated count would grow by one on every run: a guard that
+# rejects itself.
+.gate-ready
+
 # ---------------------------------------------------------------- generated reports
 # `reports/harness-ledger.json` is written by tools/e2e_harness.py at the end of its own summary -- totals and per-section
 # pass/fail/warn counts for this machine's run, no longer re-derived from a log file by a second tool. Committing it would

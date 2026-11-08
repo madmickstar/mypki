@@ -18,6 +18,14 @@ guessing, because a packaging test that silently reads nothing is a packaging te
 Why the "cannot reach" half is measured against the real tree: an exclude list of `["*.pem"]` proves nothing if some
 include entry already names a directory full of PEM files. Coverage is computed from what is actually on disk under each
 include entry, so the assertion is about this repository, not about a string that looks safe.
+
+Why README's file list lives in this file too: `README.md`'s *Where the files live* block is the same decision written
+as prose — it enumerates the paths a release ships and claims how many there are. A hand-typed copy of a file list is a
+second source of truth, and MEASURED on commit a4dc4f3 README claimed 75 paths while CHANGELOG.md's entry for the same
+commit said 74 with the whole suite green. `tools/tree_manifest.py` regenerates the block from git; the assertions below
+check it against git **again, independently** — this file re-asks git with its own flags and its own comparison rather
+than calling the tool whose output it audits: a test that grades a tool against itself cannot see the tool change its
+definition.
 """
 
 from __future__ import annotations
@@ -35,6 +43,7 @@ from mypki.app import ERROR_SURFACE_RULE
 
 BUILD_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = BUILD_ROOT / "pyproject.toml"
+README = BUILD_ROOT / "README.md"
 
 #: What a release must carry. Named here rather than inlined in each assertion so that adding an entry to `include` is a
 #: deliberate edit in two places (the config and this list) instead of a silent one-sided change.
@@ -68,6 +77,21 @@ FORBIDDEN_PATTERNS = [
 #: excludes `*.pem` but not `*.key` would still ship the CA key under a different extension, and the difference between
 #: those two configs is invisible to a test that only checks "the exclude list is non-empty".
 REQUIRED_EXCLUDES = {"scripts", "logs", "*.pem", "*.key", "*.crt"}
+
+#: The documents this repository keeps for whoever works on it rather than for whoever installs it. They are tracked,
+#: linted and cited by code, and they are not in `include` — a decision asserted below so it reads as a decision and not
+#: as an omission someone could "fix" by adding one line to one of the two lists.
+WORKING_RULES_DOCUMENTS = ["AGENTS.md", "SMOKE_TESTING.md"]
+
+#: The flags that answer "which paths would a commit from this tree contain", spelled out here rather than imported from
+#: tools/tree_manifest.py. Restating it is deliberate: the README assertions below are meant as an independent second
+#: measurement, and if they borrowed the tool's own constant they could only prove the tool agrees with itself.
+LS_FLAGS = ["ls-files", "--cached", "--exclude-standard", "--others"]
+
+#: README's claim sentence, matched loosely on purpose. tools/tree_manifest.py pins the wording exactly because it
+#: writes that line; this file only has to find it, and a copy of the exact sentence here would be a third place the
+#: wording lives. The `\(\d+\)` group is the half being audited.
+README_CLAIM = re.compile(r"^The tree this repository .* \((\d+) paths\):$")
 
 
 # --------------------------------------------------------------------------------- narrow TOML scanning
@@ -343,6 +367,250 @@ def test_the_coverage_check_is_not_vacuous() -> None:
     # keeps the mutation visible: drop any one pattern from FORBIDDEN_PATTERNS and this assertion goes red.
     poisoned = ["scripts/smoke_test.sh", "logs/mypki.log", "src/mypki/ca_key.pem", "keys/ca.key", "leaf.crt"]
     assert forbidden_in(poisoned) == poisoned, f"a forbidden shape slipped through: {forbidden_in(poisoned)}"
+
+
+# --------------------------------------------------------------------------------- README's shipped-tree claim
+
+
+def _git_paths(flags: list[str]) -> list[str]:
+    """Ask git one question and return its answer as a sorted path list, or raise.
+
+    Raises rather than returning `[]`: every assertion in this section compares README against git, so a git call that
+    failed would otherwise read as "git tracks nothing" — which is a different defect from the one being looked for, and
+    it would be reported as a README problem. The failure names the git command instead.
+    """
+    completed = subprocess.run(
+        ["git", *flags],
+        cwd=str(BUILD_ROOT),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise AssertionError(f"git {' '.join(flags)} failed ({completed.returncode}): {completed.stderr.strip()}")
+    return sorted(line for line in completed.stdout.splitlines() if line)
+
+
+def _readme_claim_and_block(text: str) -> tuple[int, list[str]]:
+    """README's claimed path count and the paths its fenced block actually lists.
+
+    Raises when either is missing, which is the same contract `covered_paths` uses for an include entry that names
+    nothing: a reader that finds no claim must not report "the claim matches".
+    """
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        match = README_CLAIM.match(line)
+        if match is None:
+            continue
+        body: list[str] = []
+        opened = False
+        for following in lines[index + 1 :]:
+            if following.strip() == "```":
+                if opened:
+                    return int(match.group(1)), body
+                opened = True
+                continue
+            if opened:
+                body.append(following)
+        raise AssertionError("found README's tree claim but no closing fenced block after it")
+    raise AssertionError(f"README has no line matching {README_CLAIM.pattern!r}")
+
+
+def _readme_drift(claimed: int, listed: list[str], tracked: list[str]) -> list[str]:
+    """Every way README's block disagrees with `tracked`. Empty means consistent — the finding, not a count."""
+    out: list[str] = []
+    if claimed != len(tracked):
+        out.append(f"README claims {claimed} paths, git reports {len(tracked)}")
+    extra = [path for path in listed if path not in tracked]
+    missing = [path for path in tracked if path not in listed]
+    if extra:
+        out.append(f"README lists {len(extra)} path(s) git does not track: {extra[:10]}")
+    if missing:
+        out.append(f"git tracks {len(missing)} path(s) README does not list: {missing[:10]}")
+    if not extra and not missing and listed != sorted(tracked):
+        out.append("README lists every tracked path but in an order git's own listing does not produce")
+    return out
+
+
+def test_readmes_shipped_tree_claim_and_block_match_git() -> None:
+    """README's count **and its enumerated paths** must equal the tree a commit would contain, exactly.
+
+    Two denominators are at work in this file and they are not the same set. `include` answers what the *artifact*
+    contains; README's block answers what *the repository* ships — it names `.github/workflows/ci.yml`, `Makefile`,
+    `SMOKE_TESTING.md` and `AGENTS.md`, none of which a wheel or sdist carries. Asserting one against the other would be
+    a category error; each is asserted against its own source of truth, and README's is git.
+
+    The denominator is `--cached --exclude-standard --others`, not plain `git ls-files`: mid-change, plain answers only
+    what is already committed (MEASURED here: 75 against 78 while three new files were still untracked), so a README
+    generated from it would be false in the very commit that added those files. That is the same disagreement this
+    pairing had at commit a4dc4f3 — 75 in README, 74 in CHANGELOG, both green.
+
+    Asserted as a set **and** as an order: the block is generated by `make ready`, so a hand-edit that reorders it is
+    drift too, and a count-only assertion would pass on a list that swapped two entries out.
+    """
+    claimed, listed = _readme_claim_and_block(README.read_text(encoding="utf-8"))
+    tracked = _git_paths(LS_FLAGS)
+
+    assert tracked, "git reported no paths at all, so nothing below could have failed"
+    assert README.name in tracked and "pyproject.toml" in tracked, (
+        f"git's listing is not this repository: {tracked[:5]}"
+    )
+
+    problems = _readme_drift(claimed, listed, tracked)
+    assert not problems, "; ".join(problems)
+    assert len(listed) == claimed == len(tracked), (claimed, len(listed), len(tracked))
+
+
+#: The four ways a generated file list goes stale, named as data so a reader can see that every failure mode is covered
+#: and not only "the number is wrong": the count drifts on its own, a tracked path disappears from the block, an
+#: invented path appears in it, or the order changes. Each becomes one parametrised case below.
+README_MUTATIONS = ("count", "missing-path", "invented-path", "reordered")
+
+
+@pytest.mark.parametrize("mutation", README_MUTATIONS)
+def test_the_readme_tree_claim_check_is_not_vacuous(mutation: str) -> None:
+    """The mutation check for the README assertion above: a poisoned block must be reported, or it is theatre.
+
+    Same shape as `test_the_coverage_check_is_not_vacuous`. A comparison of README against git passes identically when
+    either half stops reading anything — an empty list against an empty list is equality — so the only way to tell a
+    passing claim apart from a blind one is to feed the comparison deliberately wrong inputs and demand that each one is
+    named (STYLE §8: mutate one thing, prove the check sees it).
+
+    The poisoned inputs are built from git's real listing rather than from literals, so each mutation differs from a
+    correct tree in exactly one way and the failure names that one way.
+    """
+    tracked = _git_paths(LS_FLAGS)
+    assert len(tracked) > 1, "git answered with fewer than two paths, so no mutation here could be caught"
+
+    if mutation == "count":
+        # Right list, wrong number: exactly the 74-vs-75 disagreement of commit a4dc4f3.
+        problems = _readme_drift(len(tracked) + 1, tracked, tracked)
+        assert problems, "a claim one path out passed clean"
+        assert any("claims" in problem for problem in problems), problems
+        return
+
+    if mutation == "missing-path":
+        # One tracked path absent from the block, count left correct so only the set comparison can see it.
+        dropped = tracked[0]
+        problems = _readme_drift(len(tracked) - 1, tracked[1:], tracked)
+        assert problems, f"a block missing {dropped!r} passed clean"
+        assert any(dropped in problem for problem in problems), problems
+        return
+
+    if mutation == "invented-path":
+        invented = "docs/a-file-git-does-not-track.md"
+        problems = _readme_drift(len(tracked) + 1, [*tracked, invented], tracked)
+        assert problems, f"a block naming {invented!r} passed clean"
+        assert any(invented in problem for problem in problems), problems
+        return
+
+    # Reordered: every path present, the order wrong. A count-only assertion cannot see this one at all.
+    reordered = list(tracked)
+    reordered[0], reordered[-1] = reordered[-1], reordered[0]
+    assert reordered != tracked, "swapping the ends of a one-element list is not a mutation"
+    problems = _readme_drift(len(tracked), reordered, tracked)
+    assert problems, "a reordered block passed clean"
+    assert any("order" in problem for problem in problems), problems
+
+
+def _throwaway_repo(tmp_path: Path) -> Path:
+    """A real git repository built for the purpose, with one committed file and one untracked file.
+
+    Built in a temporary directory rather than by touching this checkout: an assertion about what `--others` does must
+    not add a file to the tree it runs in, because that file would move the very fingerprint `make ready` stamped and
+    `make gate` compares (the same hermeticity rule tests/test_version.py follows when it needs git refs).
+    """
+    repository = tmp_path / "repo"
+    repository.mkdir()
+    environment = dict(os.environ)
+    # A container and a CI runner routinely have no git identity configured; `git commit` dies with "Committer identity
+    # unknown" (exit 128) unless one is supplied for these calls.
+    environment["GIT_AUTHOR_NAME"] = environment["GIT_COMMITTER_NAME"] = "mypki packaging test"
+    environment["GIT_AUTHOR_EMAIL"] = environment["GIT_COMMITTER_EMAIL"] = "test@example.invalid"
+
+    def git(*arguments: str) -> None:
+        completed = subprocess.run(
+            ["git", *arguments],
+            cwd=str(repository),
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, f"git {' '.join(arguments)}: {completed.stdout}{completed.stderr}"
+
+    git("init", "-q")
+    (repository / "tracked.txt").write_text("committed\n", encoding="utf-8")
+    git("add", "tracked.txt")
+    git("commit", "-q", "-m", "one tracked file")
+    (repository / "untracked.txt").write_text("added, not yet committed\n", encoding="utf-8")
+    return repository
+
+
+def test_the_readme_denominator_sees_a_file_plain_ls_files_does_not(tmp_path: Path) -> None:
+    """Why README's claim is generated from `--cached --exclude-standard --others` and not from plain `git ls-files`.
+
+    In a throwaway repository with one committed file and one untracked file, the two commands answer different
+    questions: plain `git ls-files` reports what is committed, and this file's flags report what a commit *would*
+    contain. A README generated from the first would be born stale in the commit that adds the file — MEASURED on this
+    checkout at 75 paths against 78 while AGENTS.md and the two new tools were still untracked, the same shape as the
+    74-vs-75 disagreement of commit a4dc4f3.
+
+    Asserted against a repository built for the purpose rather than against this tree's transient state: mid-change the
+    difference here is three files, and after this change is committed it is zero. An assertion that only holds while
+    somebody is editing is an assertion that quietly stops testing anything.
+    """
+    repository = _throwaway_repo(tmp_path)
+
+    def repo_paths(flags: list[str]) -> list[str]:
+        completed = subprocess.run(["git", *flags], cwd=str(repository), capture_output=True, text=True, check=False)
+        assert completed.returncode == 0, f"git {' '.join(flags)}: {completed.stderr.strip()}"
+        return sorted(line for line in completed.stdout.splitlines() if line)
+
+    committed = repo_paths(["ls-files"])
+    as_if_committed = repo_paths(LS_FLAGS)
+
+    assert committed == ["tracked.txt"], committed
+    assert as_if_committed == ["tracked.txt", "untracked.txt"], as_if_committed
+    assert set(committed) < set(as_if_committed), "the two denominators answered the same question"
+
+    # The same relation must hold on this repository, which is what ties the throwaway repo back to the assertion
+    # above: whatever is committed here is a subset of what README's block is generated from.
+    real_committed = _git_paths(["ls-files"])
+    real_denominator = _git_paths(LS_FLAGS)
+    assert set(real_committed) <= set(real_denominator), (
+        f"README's denominator dropped {len(set(real_committed) - set(real_denominator))} committed path(s)"
+    )
+    for path in sorted(set(real_denominator) - set(real_committed)):
+        assert (BUILD_ROOT / path).is_file(), f"{path} is listed by git but absent from disk"
+        assert not any(pattern.search(path) for pattern in FORBIDDEN_PATTERNS), f"{path} would be forbidden if shipped"
+
+
+def test_working_rule_documents_are_deliberately_not_in_the_artifact() -> None:
+    """`AGENTS.md` and `SMOKE_TESTING.md` are tracked, gated and cited — and not shipped. That is a decision on purpose.
+
+    The user-facing question this file answers is what a person who untars a release can do with it. Both of these
+    documents answer "how do I work **on** this repository": measured costs of one 2-CPU box, shell constraints of this
+    container, how to run the harness. Neither helps an installed package run, and `include` is asserted equal to
+    `REQUIRED_INCLUDES` in both directions, so shipping them would mean editing two lists in lockstep for no gain to the
+    user — while omitting them silently is exactly the one-sided edit that pairing exists to catch. Naming them here is
+    what turns the omission into a recorded decision.
+    """
+    sdist_body = _table_body(PYPROJECT.read_text(encoding="utf-8"), "tool.hatch.build.targets.sdist")
+    include = set(_array_entries(sdist_body, "include"))
+
+    for document in WORKING_RULES_DOCUMENTS:
+        assert (BUILD_ROOT / document).is_file(), f"{document} is asserted absent from the artifact but is not tracked"
+        assert document not in include, f"{document} joined the sdist without this file being told about it"
+        assert document not in REQUIRED_INCLUDES, f"{document} is in one of the two lists but not the other"
+
+    # The asymmetry that makes the decision worth recording: docs/REFERENCE.md *is* shipped and links to
+    # ../SMOKE_TESTING.md, so an artifact reader can follow a link out of the artifact. Recorded here rather than
+    # papered over, so whoever ships SMOKE_TESTING.md one day edits both lists in the same commit.
+    assert "docs/REFERENCE.md" in include
+    reference = (BUILD_ROOT / "docs" / "REFERENCE.md").read_text(encoding="utf-8")
+    if "../SMOKE_TESTING.md" in reference:
+        assert "SMOKE_TESTING.md" not in include, "SMOKE_TESTING.md is both linked from a shipped doc and shipped"
 
 
 def test_no_key_material_exists_anywhere_the_include_entries_walk() -> None:

@@ -75,13 +75,14 @@ bit — **it is not an ACL** — so protection comes from the key living under p
 `icacls` hardening behind `--secure-acl` (invoked as a fixed argument array with no user-supplied component, skipped
 silently if `icacls` is absent), and from passphrase encryption as the cross-platform guarantee.
 
-The tree this repository actually ships, taken from `git ls-files` at this commit (75 paths):
+The tree this repository actually ships, taken from `git ls-files --cached --exclude-standard --others` at this commit (78 paths):
 
 ```
 .env.example
 .github/workflows/ci.yml
 .gitignore
 .pre-commit-config.yaml
+AGENTS.md
 CHANGELOG.md
 LICENSE
 Makefile
@@ -151,8 +152,10 @@ tests/test_version.py
 tests/test_views.py
 tools/banner/make_banner.py
 tools/check_version.py
+tools/doc_citations.py
 tools/e2e_harness.py
 tools/fast_lane.py
+tools/tree_manifest.py
 ```
 
 ## License

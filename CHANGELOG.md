@@ -36,7 +36,8 @@ release that does not exist.
   browser-based self-hosted PKI app for personal and lab use, not a security product, never for production; then Table of
   Contents, Features (one-liners, app capability only), Quick Start (a link to `docs/linux_install.md`), Configuration
   (carried over verbatim), *Where the files live* — promoted from an H3 under Configuration to its own H2, with the
-  `<data>/` map plus a tree of every path `git ls-files` reports at this commit (75) — License, and AI. The nine sections
+  `<data>/` map plus a tree of every path the tracked-tree command reports at this commit (78 paths today; see "Added"
+  below for the tool that generates it and the flags it uses) — License, and AI. The nine sections
   that were doing the explaining (`What it does`, `Two gotchas that will bite you`, `Serving and exposure`, `Logging`,
   `Divergences we state out loud`, `Known gaps`, `Development`, `Versions and releases`, `Naming`) moved to
   `docs/REFERENCE.md` essentially verbatim: the two gotchas, gotcha 2's four numbered caveats, the 0/1/2/3 exit-code
@@ -75,6 +76,126 @@ release that does not exist.
   `test_no_include_entry_can_reach_anything_forbidden`) ride along automatically. `FORBIDDEN_PATTERNS` and
   `REQUIRED_EXCLUDES` are unchanged: a PNG, a `.service` unit and two `.md` files hit no forbidden pattern, and adding an
   entry to the exclude half without a reason would be the kind of change that quietly stops shipping something useful.
+
+### Added
+
+- **`tools/tree_manifest.py` owns README's file list and its count.** One tool answers "which paths would a commit from
+  this tree contain": `git ls-files --cached --exclude-standard --others`, **sorted by path**, because git does not sort
+  them for us — MEASURED on this checkout, the command answered `AGENTS.md` and the two new tools first and only then
+  `.env.example`, untracked half before tracked half, each half sorted internally (`LC_ALL=C sort -c` reports disorder at
+  line 4). `--check` compares README's claim sentence and its fenced block with git — count, set **and order** — and exits
+  0 consistent / 1 drift / 2 cannot check (no git binary, or this is not a repository), the same three-code contract as
+  `tools/check_version.py`, for the same reason: a checker that answers "clean" because it read nothing is worse than no
+  checker. `--write` regenerates the block from git; `--count`, `--fingerprint` and `--stamp` answer the smaller questions.
+  The fingerprint is `<HEAD^{tree}> <content digest> <path count>`. HEAD's tree alone cannot see an edit that is not yet
+  committed, and the worktree half is a sha256 over the **contents** of every listed path rather than
+  `git status --porcelain`, because MEASURED here: appending a line to `docs/REFERENCE.md` — already listed as modified —
+  left `git status --porcelain` byte-identical, same lines in the same order with that file named as modified in both,
+  while this digest changed, since porcelain names *which* paths differ and never *how*. Re-measured warm on this tree:
+  the digest over its 78 paths takes **12.0 ms** best of five, `tree_fingerprint()` plus one stamp write takes **17.8 ms**
+  best of five, `--fingerprint` as a command line takes **104-106 ms** (five runs) and `--check` **105-129 ms** (four
+  runs) — most of which is interpreter start-up, which is why the in-process figures are quoted separately.
+- **`tools/doc_citations.py` enumerates every citation from code prose into a document**, so an edit that moves a heading
+  can be planned from one file instead of from repeated grepping. MEASURED on this tree, three denominators, one scan:
+  **429 references across 48 Python files** — the commit-shaped denominator; **425 across 46** for plain `git ls-files`,
+  which cannot see what is not yet committed (measured in a detached worktree at HEAD, where nothing is untracked); and
+  **420 references carried by 39 files**, inside the 42 `.py` files that exist under `src/` and `tests/` — three of those
+  42 carry none. The last figure is what older notes quote as "420 across 42 files", which conflates files scanned with
+  files found, and is corrected here rather than inherited. The spread is the denominator, not the pattern: one scan,
+  three questions. Exit 0 enumerated / 2 cannot enumerate; unresolved references are findings and do not change the exit
+  code. Re-measured warm: the enumeration runs in **2,921-3,000 ms**.
+- **`make inventory`** writes both answers into `reports/inventory.txt` — tracked paths, the tree fingerprint, and every
+  citation grouped by target document — because re-deriving those two facts one `grep` at a time cost **113 read-only
+  commands out of a 203-command, 161.6-minute pass**. `reports/` is gitignored: committing an inventory would freeze a path
+  count that is false in the next commit.
+- **`make gate` now refuses before it measures**, and the refusal is exit 2 — the same shape `make test` uses when `K=` is
+  empty: "you asked for something this tree cannot answer", not a failure of the tree. Without `.gate-ready` it prints one
+  line and stops; with a stamp that no longer matches it prints `gate refused: the tree moved since 'make ready'` plus
+  both lines, and stops. MEASURED on this tree, re-measured rather than inherited: unstamped `make gate` exits **2** after
+  two lines of output and never starts `_gate-steps`; stamping with `tools/tree_manifest.py --write-stamp` and then
+  appending one line to `docs/REFERENCE.md` — a file git already reported as modified — produced exit **2** reading
+  `gate tree:` followed by `gate refused: the tree moved`, with no lint, mypy or pytest output anywhere after it (the whole
+  log is five lines). The digest half changed while **the path count stayed at 78**, which is the case a count-only or
+  status-only guard waves through: one line inside an already-dirty file is invisible to both. Removing the probe line
+  restored the stamped fingerprint byte for byte. Timed again today, three runs each: the moved-stamp refusal exits 2 in
+  **117-129 ms** against **16-17 ms** for the missing-stamp refusal (40 ms on the first, cold run). Both refuse before
+  `_gate-steps` is requested, so neither pays for lint, mypy or pytest.
+- **`.gate-ready` is gitignored, and that is load-bearing rather than tidy** — re-measured on 2026-11-08 with every file
+  on disk untouched, by adding a `!/.gate-ready` negation to `.gitignore`, asking the tool, and deleting the line again:
+  the listed count goes **78 -> 79** and the digest half changes (over 79 paths, then back over 78), because the stamp
+  joins both halves. A gate that stamps its own tree
+  would then invalidate its own stamp, and README's regenerated count would grow by one on every run: a guard that rejects
+  itself. No fingerprint hex is quoted in `.gitignore`, `Makefile`, `AGENTS.md` or `tools/tree_manifest.py`, because a hex
+  written in prose is false as soon as any other file inside the digest changes — the same staleness the generated README
+  block exists to remove.
+- **`make ready` is the boundary between editing and gating**: `tree_manifest --write` first, then `--write-stamp`, in that
+  order, because a stamp taken before the regeneration names a tree that no longer exists by the time the gate reads it.
+  The guard lives in `gate`'s recipe rather than in its prerequisite list because GNU make runs prerequisites before the
+  recipe — MEASURED on this box, GNU Make 4.4.1: `all3: a | z` prints A, then Z-orderonly, then RECIPE-all3 — so the five
+  steps moved to `_gate-steps` and `gate` calls them by one recursive make whose exit code propagates.
+- **The guard was then exercised against two full gates, with a refusal forced between them, and it did what it claims.**
+  Every number below is read out of the gate logs, not retyped. **Gate 1**: `make gate` exits **0** in **274,179 ms** wall
+  (started 06:10:27, ended 06:15:01); its first line is `gate tree: <HEAD^{tree}> <worktree digest> 78`, then lint,
+  types, the version chain, `830 passed in 264.70s (0:04:24)` at `TOTAL 3022 103 97%` / **96.59%**, and the harness at
+  **328 pass / 0 fail / 0 warn** over its 17 sections. Then the tree moved — this section, `docs/REFERENCE.md` and the
+  Makefile comment were edited — and `make gate` refused: exit **2**, five lines total (`gate tree:`, the refusal, both
+  stamped/current lines), **zero** `_gate-steps` lines anywhere in the log, which is the whole point — nothing was
+  measured. The two printed fingerprints differ in the digest half and agree in the count, **78 in both**, because every
+  edit landed inside files git already listed as modified: a count-only guard would have waved this through.
+  **Gate 2**, after `make ready` re-stamped: exit **0** in **268,673 ms** wall, first line naming a *different* digest
+  over the same tree hash and the same 78 paths, `830 passed in 259.27s (0:04:19)`, `TOTAL 3022 103 97%` / **96.59%**,
+  harness **328 pass / 0 fail / 0 warn** over 17 sections. In both green runs the post-run `tools/tree_manifest.py
+  --fingerprint`, written to its own file and compared with `sed -n '1p'` of that run's log by plain `cmp`, matched byte
+  for byte (exit 0 twice). So the guard **never fired on a gated tree** — it fired only on the one tree deliberately
+  moved after stamping. **Gate 3** is the one this entry was written under: `make docs` (exit 0, 6,138 ms wall,
+  70 passed in 4.27s), then `make ready` (exit 0, 220 ms), then `make gate` exit **0** in **302,546 ms** wall
+  (10:18:25 -> 10:23:27) with the same `TOTAL 3022 103 97%` / 96.59%, `830 passed in 293.03s (0:04:53)` and harness
+  **328 pass / 0 fail / 0 warn** over 17 sections, its first line again matching the post-run `--fingerprint` byte for
+  byte. Five green gates ran on trees differing only in prose — **268,673 / 274,179 / 274,217 / 281,637 / 302,546 ms**, a
+  12.6% spread with every one of them reporting 830 passed and 328 harness assertions — which is why gate duration is
+  quoted here as a range and never as a ratio of two runs. The refusal between gate 1 and gate 2 cost 117 ms and bought the
+  certainty that a gate measured the tree its first line names.
+  The green gate that closed this change ran on the finished tree, after every word above was written; its exit code,
+  wall, test count and fingerprint match are recorded in this commit's message rather than here, because an entry that
+  quoted the tree it was written into would move the tree it names — the same self-rejection `.gate-ready` is gitignored
+  to avoid.
+- **`make docs` gained `$(TREE_MANIFEST) --check`**, so a change that touches only `.md` now proves three facts instead of
+  two: the version chain, that README's shipped-tree claim and its fenced block equal the tree a commit would contain, and
+  the two doc-aware test files. Re-measured rather than inherited: exit 0, **70 passed** in 3.49 s / 3.56 s / 3.61 s /
+  3.63 s / 4.27 s across five runs (5,373 / 5,413 / 5,483 / 5,511 / 6,138 ms wall for the whole target). Five are quoted
+  because the fifth exceeded the other four by 11-24%, which is this box's spread rather than a regression: quoting only
+  the fast runs would be quoting a number the next run can beat.
+  The "55 passed" this section and the Makefile comment used to claim was re-measured from git rather than inherited, and
+  it holds: counted by AST over `git show v0.7.2:tests/test_packaging.py` and `v0.7.2:tests/test_version.py`, counting
+  test functions times their `parametrize` argument lengths, and confirmed a second way with `pytest --collect-only` in a
+  detached worktree checked out at the tag, those two files answer 26 + 29 = **55** at 0.7.2, **63** at HEAD d3d2c8b, and
+  **70** with this change's working edits — fifteen cases out of date: eight from the sdist `include` additions
+  (`REQUIRED_INCLUDES` grew 7 -> 11 entries, and two parametrised tests ride on every entry) and seven from the README
+  assertions added here. That is exactly how a quoted count goes stale while the suite stays green, and why this entry,
+  `docs/REFERENCE.md` and the Makefile comment read their numbers out of a log file rather than retyping them.
+
+### Testing
+
+- **README's shipped-tree claim is now asserted by `tests/test_packaging.py` against git, independently.** The new section
+  re-asks git with its own copy of the flags and its own comparison instead of calling `tools/tree_manifest.py`: a test
+  that grades a tool against itself cannot see the tool change its definition.
+  `test_readmes_shipped_tree_claim_and_block_match_git` asserts count, set and order together;
+  `test_the_readme_tree_claim_check_is_not_vacuous` carries **four mutation cases** — `count` (right list, wrong number:
+  the 74-vs-75 disagreement of commit `a4dc4f3`), `missing-path` (one tracked path absent, count left correct, so only the
+  set comparison can see it), `invented-path` (a path git does not track appears in the block) and `reordered` (every path
+  present, order wrong — invisible to a count-only assertion).
+  `test_the_readme_denominator_sees_a_file_plain_ls_files_does_not` builds a throwaway repository with one committed and
+  one untracked file and proves the two denominators answer different questions there rather than relying on this tree's
+  transient mid-change state. The claim sentence itself now names the three flags in full, because the shortened
+  "`git ls-files`" was a small lie: it answers 75 paths on a tree where 78 are true.
+- **`AGENTS.md` stays out of the sdist `include` and out of `REQUIRED_INCLUDES`, by decision, and that decision is
+  asserted.** `test_working_rule_documents_are_deliberately_not_in_the_artifact` names it alongside `SMOKE_TESTING.md`:
+  both are tracked, linted, gated and cited by code, and neither is shipped, because both answer "how do I work **on**
+  this repository" — measured costs of one 2-CPU box, this container's shell constraints, how to run the harness — and
+  `include` is asserted equal to `REQUIRED_INCLUDES` in both directions. Naming them turns the omission into a recorded
+  decision instead of a one-sided edit waiting to be "fixed" by adding one line to one list. The asymmetry is recorded
+  too: `docs/REFERENCE.md` *is* shipped and links to `../SMOKE_TESTING.md`, so an artifact reader can follow a link out of
+  the artifact.
 
 ## [0.7.2] - 2026-11-06
 

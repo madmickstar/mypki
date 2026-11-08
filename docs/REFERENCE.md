@@ -192,9 +192,11 @@ Out of scope by design, stated rather than left to be discovered:
 
 ```bash
 pip install -e ".[dev]"
-make gate          # lint + types + version chain + full suite with coverage
+make inventory     # tracked paths + every code-to-doc citation, into reports/inventory.txt
 make fast K=sign   # while editing: cheap subset, targeted tests only
-make docs          # a change that touches only .md: version chain + the two doc-aware test files
+make docs          # a change that touches only .md: version chain + README's tree claim + two doc-aware test files
+make ready         # stop editing: regenerate generated blocks, then stamp the tree the gate will measure
+make gate          # refuses without that stamp; then lint + types + version chain + suite with coverage + harness
 make zip           # release artifact (run last — a zip is a copy of what was gated)
 pre-commit run --all-files
 ```
@@ -208,17 +210,33 @@ targeted `pytest -k` — and leaves mypy, coverage measurement and the end-to-en
 owes either way. It stops at the first step that fails: a lint error found in 0.06s is not followed by a 25s test run
 against a tree that already failed, which is the same short-circuit `make gate` has always had.
 
-`make docs` is the cheap half for a change that touches only `.md` files — the version chain plus
-`tests/test_packaging.py` and `tests/test_version.py`, coverage off. It exists because `make fast` refuses to run without
-a `-k` pattern and a documentation edit has no code keyword to put in one, which left the full suite as the only
-documented option for a prose change. Two files are the whole of it because no test reads doc **content**: an AST scan of
-`tests/*.py` for `read_text`, `read_bytes` and `open` calls touching a `.md` path returns zero files. What survives is two
-references to doc *paths* — `REQUIRED_INCLUDES` in `test_packaging.py` asserts that the shipped documentation paths
-(`README.md`, `CHANGELOG.md`, `docs/page-map.md`, and since this restructure also `docs/REFERENCE.md`,
-`docs/linux_install.md` and `assets/banner.png`) are in the sdist and exist on disk, and `test_version.py` asserts the
-CHANGELOG carries this version. MEASURED: exit 0, 55 passed in 3.29s and 3.97s across two runs (4,971 ms and 5,694 ms wall)
-— against a `make gate` that runs four minutes plus on this box. A docs-only commit still owes `make gate` once;
-`make docs` proves those two facts, not that the suite is green.
+`make docs` is the cheap half for a change that touches only `.md` files — the version chain, README's shipped-tree claim,
+and `tests/test_packaging.py` plus `tests/test_version.py`, coverage off. It exists because `make fast` refuses to run
+without a `-k` pattern and a documentation edit has no code keyword to put in one, which left the full suite as the only
+documented option for a prose change. MEASURED on this tree: exit 0, **70 passed** in 3.49s / 3.56s / 3.61s / 3.63s across
+four runs (5,373 ms / 5,413 ms / 5,483 ms / 5,511 ms wall for the whole target), against a `make gate` measured at
+274,179 ms and 268,673 wall on the same tree — four and a half minutes each, so the comparison that survives is seconds
+versus minutes.
+
+Two test files are the whole of it because no test reads doc **content**: an AST scan of `tests/*.py` for `read_text`,
+`read_bytes` and `open` calls touching a `.md` path returns zero files. What survives is references to doc *paths* —
+`REQUIRED_INCLUDES` in `test_packaging.py` asserts that the shipped documentation paths (`README.md`, `CHANGELOG.md`,
+`docs/page-map.md`, `docs/REFERENCE.md`, `docs/linux_install.md` and `assets/banner.png`) are in the sdist and exist on
+disk — and, since this change, that README's path count and its enumerated list equal `git ls-files --cached
+--exclude-standard --others` exactly, with four mutation cases proving that assertion is not vacuous. `test_version.py`
+asserts the CHANGELOG carries this version. A docs-only commit still owes `make gate` once; `make docs` proves those
+facts, not that the suite is green.
+
+`make ready` and the `make gate` stamp exist because of a measured waste: one 0.7.2 pass ran the full suite twice — once
+as a baseline before any edit existed, once invalidated by an edit that landed mid-run (README written 15:30:59 inside a
+gate running 15:28:15 to 15:33:01) — eight minutes bought for nothing. `ready` regenerates README's generated block from
+git and writes `gate tree: <HEAD^{tree}> <worktree digest> <path count>` to `.gate-ready` (gitignored); `gate` prints
+that line first and exits 2 if the tree has moved since, so a gate log names the tree it measured and a re-run is a
+decision rather than a guess. Stamping costs 17.8 ms (fingerprint plus one write, warm, best of five) out of that target's
+measured 220-226 ms wall over twelve runs; the refusal itself costs 16-17 ms when no stamp exists and 117-129 ms when the
+stamp no longer matches. The guard was exercised against two full gates with a deliberate edit between them: it refused
+the moved tree in 117 ms, with zero `_gate-steps` lines in that log, and both green gates printed a first line that
+matched `--fingerprint` run afterwards, byte for byte.
 
 `K=` takes either form. Bare keywords are ORed (`make fast K="csr_generate ca_page"`) because pytest accepts no space-separated
 list of names; an expression written with `or`, `and` or `not` is passed to pytest unchanged (`make fast K="csr_sign and not

@@ -19,13 +19,14 @@ Why the "cannot reach" half is measured against the real tree: an exclude list o
 include entry already names a directory full of PEM files. Coverage is computed from what is actually on disk under each
 include entry, so the assertion is about this repository, not about a string that looks safe.
 
-Why README's file list lives in this file too: `README.md`'s *Where the files live* block is the same decision written
-as prose — it enumerates the paths a release ships and claims how many there are. A hand-typed copy of a file list is a
-second source of truth, and MEASURED on commit a4dc4f3 README claimed 75 paths while CHANGELOG.md's entry for the same
+Why README's structure tree lives in this file too: `README.md`'s *Where the files live* block is the same decision
+written as prose — it draws the paths a release ships as a tree and claims how many there are. A hand-typed copy of a
+file list is
+a second source of truth, and MEASURED on commit a4dc4f3 README claimed 75 paths while CHANGELOG.md's entry for the same
 commit said 74 with the whole suite green. `tools/tree_manifest.py` regenerates the block from git; the assertions below
-check it against git **again, independently** — this file re-asks git with its own flags and its own comparison rather
-than calling the tool whose output it audits: a test that grades a tool against itself cannot see the tool change its
-definition.
+check it against git **again, independently** — this file re-asks git with its own flags, draws the tree with its own
+renderer and compares with its own parser rather than calling the tool whose output it audits: a test that grades a tool
+against itself cannot see the tool change its definition.
 """
 
 from __future__ import annotations
@@ -92,6 +93,12 @@ LS_FLAGS = ["ls-files", "--cached", "--exclude-standard", "--others"]
 #: writes that line; this file only has to find it, and a copy of the exact sentence here would be a third place the
 #: wording lives. The `\(\d+\)` group is the half being audited.
 README_CLAIM = re.compile(r"^The tree this repository .* \((\d+) paths\):$")
+
+#: README's tree opens with a label git cannot report — `git ls-files` lists files, never the repository itself. The two
+#: connectors are both four columns wide, which is what makes a line's depth readable back from its connector's column.
+README_TREE_ROOT = "mypki/"
+README_TREE_CONNECTORS = ("├── ", "└── ")
+README_TREE_CONTINUATIONS = ("│   ", "    ")
 
 
 # --------------------------------------------------------------------------------- narrow TOML scanning
@@ -392,10 +399,11 @@ def _git_paths(flags: list[str]) -> list[str]:
 
 
 def _readme_claim_and_block(text: str) -> tuple[int, list[str]]:
-    """README's claimed path count and the paths its fenced block actually lists.
+    """README's claimed path count and the raw lines of its fenced tree.
 
     Raises when either is missing, which is the same contract `covered_paths` uses for an include entry that names
-    nothing: a reader that finds no claim must not report "the claim matches".
+    nothing: a reader that finds no claim must not report "the claim matches". The block is returned as drawn rather
+    than as paths, so `_readme_drift` can compare the **shape** and not only the set — a wrong indentation is drift too.
     """
     lines = text.splitlines()
     for index, line in enumerate(lines):
@@ -416,19 +424,99 @@ def _readme_claim_and_block(text: str) -> tuple[int, list[str]]:
     raise AssertionError(f"README has no line matching {README_CLAIM.pattern!r}")
 
 
-def _readme_drift(claimed: int, listed: list[str], tracked: list[str]) -> list[str]:
-    """Every way README's block disagrees with `tracked`. Empty means consistent — the finding, not a count."""
+def _tree_lines(tracked: list[str]) -> list[str]:
+    """Draw `tracked` as the indented tree README's block must hold.
+
+    Written here rather than imported from tools/tree_manifest.py, for the reason this file's header gives: these
+    assertions are an independent measurement, and borrowing the audited tool's renderer would let the two agree with
+    each other instead of with git. Directories are built from path components because git tracks files only.
+    """
+    root: dict[str, object] = {"dirs": {}, "files": []}
+    for path in tracked:
+        parts = path.split("/")
+        level = root
+        for part in parts[:-1]:
+            nxt = level["dirs"].get(part)
+            if nxt is None:
+                nxt = {"dirs": {}, "files": []}
+                level["dirs"][part] = nxt
+            level = nxt
+        level["files"].append(parts[-1])
+
+    lines = [README_TREE_ROOT]
+
+    def walk(level: dict[str, object], prefix: str) -> None:
+        entries = [(name, True) for name in sorted(level["dirs"])] + [(name, False) for name in sorted(level["files"])]
+        for position, (name, is_dir) in enumerate(entries):
+            last = position == len(entries) - 1
+            lines.append(f"{prefix}{'└── ' if last else '├── '}{name}{'/' if is_dir else ''}")
+            if is_dir:
+                walk(level["dirs"][name], prefix + ("    " if last else "│   "))
+
+    walk(root, "")
+    return lines
+
+
+def _tree_paths(block: list[str]) -> tuple[list[str], list[str]]:
+    """Read a drawn tree back into paths, and name every line that could not be read.
+
+    Depth comes from where a connector sits (column 4 * (depth - 1), earlier groups being `│   ` or `    `); parents
+    come from a stack carried across the block, so `app.py` under `├── mypki/` resolves to `src/mypki/app.py`. Lines
+    that cannot be read are returned rather than dropped: a comparison that silently reads four paths instead of
+    seventy-eight is the vacuous pass this file's mutation cases exist to make impossible.
+    """
+    paths: list[str] = []
+    unreadable: list[str] = []
+    stack: list[str] = []
+    for raw in block:
+        line = raw.rstrip()
+        if not line:
+            continue
+        positions = [line.index(c) for c in README_TREE_CONNECTORS if c in line]
+        if not positions:
+            if line == README_TREE_ROOT:
+                stack = []
+                continue
+            unreadable.append(raw)
+            continue
+        cut = min(positions)
+        prefix, name = line[:cut], line[cut + 4 :]
+        if any(prefix[i : i + 4] not in README_TREE_CONTINUATIONS for i in range(0, cut, 4)) or not name:
+            unreadable.append(raw)
+            continue
+        depth = cut // 4 + 1
+        if depth - 1 > len(stack):
+            unreadable.append(raw)
+            continue
+        stack = stack[: depth - 1]
+        if name.endswith("/"):
+            stack.append(name[:-1])
+            continue
+        paths.append("/".join([*stack, name]))
+    return sorted(paths), unreadable
+
+
+def _readme_drift(claimed: int, block: list[str], tracked: list[str]) -> list[str]:
+    """Every way README's drawn tree disagrees with `tracked`. Empty means consistent — the finding, not a count."""
     out: list[str] = []
     if claimed != len(tracked):
         out.append(f"README claims {claimed} paths, git reports {len(tracked)}")
+    listed, unreadable = _tree_paths(block)
+    if unreadable:
+        out.append(f"README's tree has {len(unreadable)} line(s) that cannot be read as a path: {unreadable[:5]}")
     extra = [path for path in listed if path not in tracked]
     missing = [path for path in tracked if path not in listed]
     if extra:
         out.append(f"README lists {len(extra)} path(s) git does not track: {extra[:10]}")
     if missing:
         out.append(f"git tracks {len(missing)} path(s) README does not list: {missing[:10]}")
-    if not extra and not missing and listed != sorted(tracked):
-        out.append("README lists every tracked path but in an order git's own listing does not produce")
+    # Shape last, and only when the sets agree: a swapped sibling or a file drawn one level too deep is invisible to a
+    # set comparison, and this block is generated rather than typed, so a hand-edit that reorders it is drift as well.
+    if not extra and not missing and not unreadable and block != _tree_lines(tracked):
+        out.append(
+            "README's tree names every tracked path but is not the shape `make ready` renders "
+            "(order within a level, indentation, or the root label)"
+        )
     return out
 
 
@@ -445,10 +533,10 @@ def test_readmes_shipped_tree_claim_and_block_match_git() -> None:
     generated from it would be false in the very commit that added those files. That is the same disagreement this
     pairing had at commit a4dc4f3 — 75 in README, 74 in CHANGELOG, both green.
 
-    Asserted as a set **and** as an order: the block is generated by `make ready`, so a hand-edit that reorders it is
-    drift too, and a count-only assertion would pass on a list that swapped two entries out.
+    Asserted as a set **and** as a shape: the block is generated by `make ready`, so a hand-edit that reorders siblings
+    or re-nests a file is drift too, and a count-only assertion would pass on a tree that swapped two entries out.
     """
-    claimed, listed = _readme_claim_and_block(README.read_text(encoding="utf-8"))
+    claimed, block = _readme_claim_and_block(README.read_text(encoding="utf-8"))
     tracked = _git_paths(LS_FLAGS)
 
     assert tracked, "git reported no paths at all, so nothing below could have failed"
@@ -456,15 +544,19 @@ def test_readmes_shipped_tree_claim_and_block_match_git() -> None:
         f"git's listing is not this repository: {tracked[:5]}"
     )
 
-    problems = _readme_drift(claimed, listed, tracked)
+    problems = _readme_drift(claimed, block, tracked)
     assert not problems, "; ".join(problems)
+
+    listed, unreadable = _tree_paths(block)
+    assert not unreadable, f"README's tree has lines this test cannot read: {unreadable[:5]}"
     assert len(listed) == claimed == len(tracked), (claimed, len(listed), len(tracked))
 
 
-#: The four ways a generated file list goes stale, named as data so a reader can see that every failure mode is covered
-#: and not only "the number is wrong": the count drifts on its own, a tracked path disappears from the block, an
-#: invented path appears in it, or the order changes. Each becomes one parametrised case below.
-README_MUTATIONS = ("count", "missing-path", "invented-path", "reordered")
+#: The five ways a generated tree goes stale, named as data so a reader can see that every failure mode is covered and
+#: not only "the number is wrong": the count drifts on its own, a tracked path disappears from the drawing, an invented
+#: path appears in it, two siblings swap places (same set, wrong shape), or a line stops being a tree line at all. Each
+#: becomes one parametrised case below.
+README_MUTATIONS = ("count", "missing-path", "invented-path", "reordered", "prose-line")
 
 
 @pytest.mark.parametrize("mutation", README_MUTATIONS)
@@ -481,36 +573,53 @@ def test_the_readme_tree_claim_check_is_not_vacuous(mutation: str) -> None:
     """
     tracked = _git_paths(LS_FLAGS)
     assert len(tracked) > 1, "git answered with fewer than two paths, so no mutation here could be caught"
+    drawn = _tree_lines(tracked)
 
     if mutation == "count":
-        # Right list, wrong number: exactly the 74-vs-75 disagreement of commit a4dc4f3.
-        problems = _readme_drift(len(tracked) + 1, tracked, tracked)
+        # Right tree, wrong number: exactly the 74-vs-75 disagreement of commit a4dc4f3.
+        problems = _readme_drift(len(tracked) + 1, drawn, tracked)
         assert problems, "a claim one path out passed clean"
         assert any("claims" in problem for problem in problems), problems
         return
 
     if mutation == "missing-path":
-        # One tracked path absent from the block, count left correct so only the set comparison can see it.
+        # One tracked path absent from the drawing, count left correct so only the set comparison can see it.
         dropped = tracked[0]
-        problems = _readme_drift(len(tracked) - 1, tracked[1:], tracked)
-        assert problems, f"a block missing {dropped!r} passed clean"
+        problems = _readme_drift(len(tracked) - 1, _tree_lines(tracked[1:]), tracked)
+        assert problems, f"a tree missing {dropped!r} passed clean"
         assert any(dropped in problem for problem in problems), problems
         return
 
     if mutation == "invented-path":
         invented = "docs/a-file-git-does-not-track.md"
-        problems = _readme_drift(len(tracked) + 1, [*tracked, invented], tracked)
-        assert problems, f"a block naming {invented!r} passed clean"
+        problems = _readme_drift(len(tracked) + 1, _tree_lines([*tracked, invented]), tracked)
+        assert problems, f"a tree naming {invented!r} passed clean"
         assert any(invented in problem for problem in problems), problems
         return
 
-    # Reordered: every path present, the order wrong. A count-only assertion cannot see this one at all.
-    reordered = list(tracked)
-    reordered[0], reordered[-1] = reordered[-1], reordered[0]
-    assert reordered != tracked, "swapping the ends of a one-element list is not a mutation"
-    problems = _readme_drift(len(tracked), reordered, tracked)
-    assert problems, "a reordered block passed clean"
-    assert any("order" in problem for problem in problems), problems
+    if mutation == "reordered":
+        # Two siblings swap: every path still present at the right depth, so only the shape check can see it.
+        swapped = list(drawn)
+        for index in range(len(swapped) - 1):
+            left, right = swapped[index], swapped[index + 1]
+            if left.endswith("/") or right.endswith("/"):
+                continue
+            if left[:2] != right[:2]:
+                continue
+            swapped[index], swapped[index + 1] = right, left
+            break
+        assert swapped != drawn, f"no pair of sibling file lines to swap in a {len(drawn)}-line tree"
+        problems = _readme_drift(len(tracked), swapped, tracked)
+        assert problems, "a tree with two siblings swapped passed clean"
+        assert any("shape" in problem for problem in problems), problems
+        return
+
+    # A line that is not a tree line at all — prose left inside the block. Reading it as a path would be a guess, and
+    # skipping it in silence would compare fewer paths than git reports.
+    polluted = [*drawn[:3], "this paragraph wandered into the fenced block", *drawn[3:]]
+    problems = _readme_drift(len(tracked), polluted, tracked)
+    assert problems, "a tree carrying a non-path line passed clean"
+    assert any("cannot be read" in problem for problem in problems), problems
 
 
 def _throwaway_repo(tmp_path: Path) -> Path:

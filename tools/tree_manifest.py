@@ -1,10 +1,15 @@
-"""The shipped tree as one fact: README's file list and its count, checked against git.
+"""The shipped tree as one fact: README's structure tree and its path count, checked against git.
 
 WHY THIS EXISTS
-  README.md "Where the files live" ends with a fenced list of every path this repository ships and a sentence claiming
-  how many there are ("taken from `git ls-files` at this commit (N paths)"). Both were typed by hand, and a hand-typed
-  copy is a second source of truth: it drifts the first time a file is added or removed, and nothing in the suite could
-  see it.
+  README.md "Where the files live" ends with a sentence claiming how many paths this repository ships ("taken from
+  `git ls-files --cached --exclude-standard --others` at this commit (N paths)") and a fenced block holding them. Both
+  were typed by hand, and a hand-typed copy is a second source of truth: it drifts the first time a file is added or
+  removed, and nothing in the suite could see it.
+
+  The block is rendered as an indented tree rather than as a flat sorted list, because that is the shape a reader can
+  use to find a file. It changes what this tool has to do: `tree_lines` builds directories out of the same paths, and
+  `parse_tree_lines` has to read them back — recovering depth from where a connector sits, and each path's parents from
+  a stack — before anything can be compared against git.
 
   MEASURED on commit a4dc4f3: README claimed 75 paths while CHANGELOG.md's own entry for the same commit said 74, plain
   `git ls-files` answered 75, and `make gate` was green on all three (823 passed, TOTAL 3022 stmts / 103 missed).
@@ -45,7 +50,8 @@ THE EXIT CODES A WRAPPER MUST NOT FLATTEN
   anything is worse than no checker.
 
 WHAT IT DOES NOT DO
-  It compares paths, counts and order. It cannot tell you whether a sentence about behaviour is true: the prose-policing
+  It compares paths, counts and tree shape. It cannot tell you whether a sentence about behaviour is true: the
+  prose-policing
   gates (tools/check_docs.py, tests/test_docstrings.py) were removed in bc0031b and are not reinstated here.
 """
 
@@ -74,6 +80,15 @@ CLAIM_PREFIX = (
 )
 CLAIM_SUFFIX = " paths):"
 CLAIM = re.compile(r"^" + re.escape(CLAIM_PREFIX) + r"(\d+)" + re.escape(CLAIM_SUFFIX) + r"$")
+
+#: The label README's tree opens with. git lists files, never the repository itself, so this line is not a path:
+#: `tree_lines` emits it outside the walk and `parse_tree_lines` skips it without resetting nothing else.
+ROOT_LABEL = "mypki/"
+
+#: The two connectors this tool renders with, both exactly four columns wide. A reader needs both to recover depth: at
+#: depth d a connector starts at column 4 * (d - 1), every earlier four-column group being either `│   ` or `    `.
+TREE_CONNECTORS = ("├── ", "└── ")
+TREE_CONTINUATIONS = ("│   ", "    ")
 
 #: The tree a commit would contain: tracked and staged paths, plus new files that are not ignored. See the module
 #: docstring for why plain `git ls-files` is the wrong denominator while an edit is in flight.
@@ -155,11 +170,102 @@ def claim_sentence(count: int) -> str:
     return f"{CLAIM_PREFIX}{count}{CLAIM_SUFFIX}"
 
 
+class _Level:
+    """One directory of the rendered tree: the files directly inside it, and its subdirectories."""
+
+    __slots__ = ("dirs", "files")
+
+    def __init__(self) -> None:
+        self.dirs: dict[str, _Level] = {}
+        self.files: list[str] = []
+
+
+def tree_lines(tracked: list[str]) -> list[str]:
+    """The fenced block README carries: the tracked paths as an indented tree, sorted within every level.
+
+    Directories are not tracked by git — `git ls-files` lists files — so they are built here from the path components
+    and rendered with a trailing `/`. Sorting is per level rather than over the flat list: a flat sort puts
+    `src/mypki/static/app.js` before `src/mypki/store.py`, which reads as disorder once the same paths are nested.
+    """
+    root = _Level()
+    for path in tracked:
+        parts = path.split("/")
+        level = root
+        for part in parts[:-1]:
+            level = level.dirs.setdefault(part, _Level())
+        level.files.append(parts[-1])
+
+    lines = [ROOT_LABEL]
+
+    def walk(level: _Level, prefix: str) -> None:
+        entries = [(name, True) for name in sorted(level.dirs)] + [(name, False) for name in sorted(level.files)]
+        for position, (name, is_dir) in enumerate(entries):
+            last = position == len(entries) - 1
+            lines.append(f"{prefix}{'└── ' if last else '├── '}{name}{'/' if is_dir else ''}")
+            if is_dir:
+                walk(level.dirs[name], prefix + ("    " if last else "│   "))
+
+    walk(root, "")
+    return lines
+
+
+def parse_tree_lines(body: list[str]) -> tuple[list[str], list[str]]:
+    """Read README's fenced tree back into paths, and name every line that could not be read.
+
+    Returns (sorted paths, unreadable lines). Two things have to be recovered from the drawing:
+
+    * **Depth**, from where a connector sits: column 4 * (depth - 1), every earlier four-column group being either
+      `│   ` or `    `. A prefix that is neither is reported rather than guessed at.
+    * **The parents**, from a stack carried across the block: `app.py` drawn under `├── mypki/` resolves to
+      `src/mypki/app.py`, never to a bare `app.py`. A directory line (trailing `/`) pushes its name; a file line joins
+      the stack with it.
+
+    Unreadable lines are returned, not skipped in silence: a block that has drifted into prose, or into a shape this
+    tool cannot parse, must fail the check instead of quietly comparing fewer paths than git reports.
+    """
+    paths: list[str] = []
+    unreadable: list[str] = []
+    stack: list[str] = []
+
+    for raw in body:
+        line = raw.rstrip()
+        if not line:
+            continue
+        positions = [line.index(connector) for connector in TREE_CONNECTORS if connector in line]
+        if not positions:
+            # No connector at all: the repository label (not a path), or a line that belongs to prose.
+            if line == ROOT_LABEL:
+                stack = []
+                continue
+            unreadable.append(raw)
+            continue
+
+        cut = min(positions)
+        prefix = line[:cut]
+        name = line[cut + 4 :]
+        if any(prefix[i : i + 4] not in TREE_CONTINUATIONS for i in range(0, cut, 4)) or not name:
+            unreadable.append(raw)
+            continue
+
+        depth = cut // 4 + 1
+        if depth - 1 > len(stack):
+            unreadable.append(raw)
+            continue
+
+        stack = stack[: depth - 1]
+        if name.endswith("/"):
+            stack.append(name[:-1])
+            continue
+        paths.append("/".join([*stack, name]))
+
+    return sorted(paths), unreadable
+
+
 def parse_readme(text: str) -> tuple[int, int, list[str]]:
     """Locate README's claim and the fenced block below it.
 
-    Returns (claim line number, claimed count, listed paths). Raises ValueError when either is missing: a checker that
-    silently reads nothing always passes.
+    Returns (claim line number, claimed count, raw block lines). Raises ValueError when either is missing: a checker
+    that silently reads nothing always passes.
     """
     lines = text.splitlines()
     for index, line in enumerate(lines):
@@ -181,26 +287,39 @@ def parse_readme(text: str) -> tuple[int, int, list[str]]:
     raise ValueError(f"README has no line matching {CLAIM.pattern!r}")
 
 
-def findings(claimed: int, listed: list[str], tracked: list[str]) -> list[str]:
+def findings(
+    claimed: int,
+    listed: list[str],
+    tracked: list[str],
+    *,
+    block: list[str] | None = None,
+    unreadable: tuple[str, ...] = (),
+) -> list[str]:
     """Every way README's tree block disagrees with git. Empty means consistent."""
     out: list[str] = []
     if claimed != len(tracked):
         out.append(f"README claims {claimed} paths, git reports {len(tracked)}")
+    if unreadable:
+        out.append(f"README's tree has {len(unreadable)} line(s) that cannot be read as a path: {list(unreadable)[:5]}")
     extra = [path for path in listed if path not in tracked]
     missing = [path for path in tracked if path not in listed]
     if extra:
         out.append(f"README lists {len(extra)} path(s) git does not track: {extra[:10]}")
     if missing:
         out.append(f"git tracks {len(missing)} path(s) README does not list: {missing[:10]}")
-    # Order is asserted too: the block is generated, so an unsorted hand-edit is drift rather than taste.
-    if not extra and not missing and listed != tracked:
-        out.append("README lists every tracked path but in a different order than git reports them")
+    # Shape is asserted too, and it is the only comparison that can see a wrong indentation or a swapped sibling: the
+    # block is generated, so a hand-edit that reorders or re-nests it is drift rather than taste.
+    if block is not None and not extra and not missing and not unreadable and block != tree_lines(tracked):
+        out.append(
+            "README's tree names every tracked path but is not the shape `make ready` renders "
+            "(order within a level, indentation, or the root label)"
+        )
     return out
 
 
 def render(tracked: list[str]) -> str:
-    """The claim sentence plus its fenced block, exactly as README carries them."""
-    body = "\n".join(tracked)
+    """The claim sentence plus its fenced tree, exactly as README carries them."""
+    body = "\n".join(tree_lines(tracked))
     return f"{claim_sentence(len(tracked))}\n\n```\n{body}\n```"
 
 
@@ -304,17 +423,18 @@ def main(argv: list[str] | None = None) -> int:
     text = README.read_text(encoding="utf-8")
 
     try:
-        _, claimed, listed = parse_readme(text)
+        _, claimed, block = parse_readme(text)
     except ValueError as error:
         print(f"drift: {error}", file=sys.stderr)
         return 1
 
     if arguments.write:
         README.write_text(replace_block(text, tracked), encoding="utf-8")
-        print(f"ok: README tree block regenerated ({len(tracked)} paths)")
+        print(f"ok: README structure tree regenerated ({len(tracked)} paths)")
         return 0
 
-    problems = findings(claimed, listed, tracked)
+    listed, unreadable = parse_tree_lines(block)
+    problems = findings(claimed, listed, tracked, block=block, unreadable=tuple(unreadable))
     for problem in problems:
         print(f"drift: {problem}", file=sys.stderr)
     if problems:

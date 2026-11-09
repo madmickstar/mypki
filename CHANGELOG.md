@@ -27,7 +27,7 @@ check*, which is never a pass. A section below is written **when its release is 
 that has not shipped is exactly what `check_version.py` reports as drift, because it reads to a user as a promise about a
 release that does not exist.
 
-## [Unreleased]
+## [0.7.3] - 2026-11-09
 
 ### Changed
 
@@ -59,11 +59,46 @@ release that does not exist.
   the Windows key-protection paragraph) cite README "Configuration" and README "Where the files live". CHANGELOG.md's own
   nine historical mentions of the README are left as written — they describe states of the tree at the time, and rewriting
   them would make the history wrong.
-- **The banner generator is in the tree** as `tools/banner/make_banner.py`, so `assets/banner.png` (2890x578, 9860 B,
-  sha256 `f9df99a4…4836cc`) is reproducible rather than an artifact with no recipe. MEASURED: running it with the shipped
-  arguments (font 316, tracking 320, threshold 0.32, TILE 34) writes a file whose sha256 equals the committed banner's,
-  byte for byte. It needed one edit to survive `make lint` — an unpacked `grid` became `_grid` (ruff RUF059), since
-  `tools/` is linted. Note that Pillow is not in `.venv`: regeneration needs an interpreter that has it.
+- **The banner generator is in the tree** as `tools/banner/make_banner.py`, so a banner is reproducible rather than an
+  artifact with no recipe. MEASURED: running it with its shipped arguments (font 316, tracking 320, threshold 0.32, TILE 34)
+  writes a file whose sha256 equals the banner this tree shipped up to and including commit `d205240` — 2890x578, 9860 B,
+  `f9df99a4…4836cc` — byte for byte. It needed one edit to survive `make lint` — an unpacked `grid` became `_grid` (ruff
+  RUF059), since `tools/` is linted. Note that Pillow is not in `.venv`: regeneration needs an interpreter that has it.
+  As of the swap below this tool reproduces the **previous** banner, not the shipped one; see the next bullet.
+- **`assets/banner.png` is now the brand variant.** The file README embeds was replaced byte-for-byte by
+  `Style/banners/banner-brand.png` — the near-white-over-blue wordmark with the seal mark and the `SELF HOSTED ROOT CA`
+  tagline, chosen from the `make_banner_pro.py` set as the one that reads as copy first and neon second. MEASURED: both
+  files are 2890x578 (the same canvas README renders at), so nothing about the link or its layout changed; only the bytes
+  did, 9860 B → 25568 B, sha256 `f9df99a4…4836cc` → `b94b12d3…3a0e0`. The superseded banner is kept out of the tree at
+  `tmp/banner-legacy-cyan-f9df99a4.png` so the byte-identity claim above stays checkable. `tools/banner/make_banner.py`
+  still writes the legacy design; `Style/banners/make_banner_pro.py --install brand` is what regenerates the shipped file.
+  No test reads the banner's bytes — `tests/test_packaging.py` asserts only that `assets/banner.png` is in the sdist and
+  exists on disk — so this is a visual change with no packaging change behind it.
+- **README's Quick Start spells the install out.** It was one sentence pointing at `docs/linux_install.md`, which is the
+  right page for a systemd unit and the wrong page for "I have a checkout and a Python". It now gives the venv commands
+  (`python3 -m venv .venv`, activate, `pip install ".[dev]"` / `pip install .`), the three commands that follow
+  (`init-ca`, `serve`, `info`), the fact that `init-ca` must run first because serving with no CA exits **3**, and
+  `python -m mypki …` as the route that works where no console script was installed — then links to
+  `docs/linux_install.md` for the Linux service install. Both routes it names are already asserted by
+  `tests/test_packaging.py` (`test_python_dash_m_is_a_working_route_to_the_cli`,
+  `test_the_console_script_route_reports_the_same_version`).
+- **The key-protection paragraph moved to `docs/REFERENCE.md`, where it can be exact.** README's *Where the files live*
+  carried "Key protection, honestly" — POSIX `0700`/`0600` plus a re-`stat`, and what `os.chmod` does **not** do on
+  Windows. That is a promise whose wording has to be precise, and README is the one page written for a skimmer. The new
+  section [Key protection and the data directory](docs/REFERENCE.md#key-protection-and-the-data-directory) holds it in
+  full; README keeps the runtime file map and links to that section. `src/mypki/ca.py::_is_posix`'s docstring citation —
+  one of the 41 re-routed in the 0.7.2 pass above, which had pointed at README "Where the files live" for exactly this
+  paragraph — now points at REFERENCE's new heading instead.
+- **`Makefile` says what each target does and nothing else.** Its comment blocks had accumulated a running record of past
+  passes — measured durations, commit hashes, counts of commands spent — which is history belonging to this file, not to
+  a build file. Every target, recipe and exit-code contract is unchanged; the prose around them is now one or two
+  sentences naming the rule rather than the argument that produced it (`tests/test_fast_lane.py` still reads the pytest
+  lines in this file and still fails if one restates `-q`).
+- **`make zip` writes to `../dist/`.** The artifact landed next to the source tree, where a build directory holding its own
+  releases can be mistaken for a release. `RELEASE_DIR := ../dist` names the destination once; `dist/` is where every
+  zip and bundle this project has produced now lives.
+- **`make clean` removes runtime scratch as well as caches**: `.gate-ready`, `nohup.out` and `.coverage`. Runtime litter
+  that only a human remembering to delete is litter that reappears in the next tree.
 
 ### Packaging
 
@@ -76,6 +111,10 @@ release that does not exist.
   `test_no_include_entry_can_reach_anything_forbidden`) ride along automatically. `FORBIDDEN_PATTERNS` and
   `REQUIRED_EXCLUDES` are unchanged: a PNG, a `.service` unit and two `.md` files hit no forbidden pattern, and adding an
   entry to the exclude half without a reason would be the kind of change that quietly stops shipping something useful.
+- **No packaging change in this release.** `include` and `exclude` are untouched: the swapped banner is the same path, the
+  new README sections live in files already shipped, and nothing joined or left the artifact. That is stated rather than
+  left to be inferred from an absence, because `tests/test_packaging.py` asserts `include == REQUIRED_INCLUDES` in both
+  directions and a reader cannot tell an intentional no-change from an oversight.
 
 ### Added
 
@@ -196,6 +235,17 @@ release that does not exist.
   decision instead of a one-sided edit waiting to be "fixed" by adding one line to one list. The asymmetry is recorded
   too: `docs/REFERENCE.md` *is* shipped and links to `../SMOKE_TESTING.md`, so an artifact reader can follow a link out of
   the artifact.
+- **README's block is now a tree, and both halves learned to read it.** `tools/tree_manifest.py` gained `tree_lines()`
+  (directories built from path components — git tracks files only — sorted per level, since a flat sort puts
+  `src/mypki/static/app.js` before `src/mypki/store.py`) and `parse_tree_lines()`, which recovers depth from where a
+  connector sits and each path's parents from a stack, returning lines it could not read instead of skipping them. The
+  comparison is now against the **drawn shape**, so a swapped sibling or a file nested one level wrong is drift rather
+  than taste. `tests/test_packaging.py` carries its own renderer and parser for the same reason as before: grading the
+  tool against itself proves only that it agrees with itself.
+- **The README mutation cases went four -> five.** `reordered` now swaps two sibling file lines (same set, wrong shape —
+  invisible to a set comparison) and the new `prose-line` case drops a sentence into the fenced block, which must be
+  reported as "cannot be read as a path" rather than guessed at or silently dropped. Counted by reading the parametrised
+  tuple in this tree; the suite's own number is read out of the gate log below rather than retyped here.
 
 ## [0.7.2] - 2026-11-06
 
@@ -725,7 +775,8 @@ only the per-release *files* are gone.
 - **[0.2.0]** - 2026-10-28 - `bc0031b^:docs/history/0.2.0.md`
 - **[0.1.0]** - 2026-10-26 - `bc0031b^:docs/history/0.1.0.md`
 
-[Unreleased]: https://github.com/madmickstar/mypki/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/madmickstar/mypki/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/madmickstar/mypki/releases/tag/v0.7.3
 [0.7.2]: https://github.com/madmickstar/mypki/releases/tag/v0.7.2
 [0.7.1]: https://github.com/madmickstar/mypki/releases/tag/v0.7.1
 [0.7.0]: https://github.com/madmickstar/mypki/releases/tag/v0.7.0

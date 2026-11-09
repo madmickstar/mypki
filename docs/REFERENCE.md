@@ -5,11 +5,12 @@ feature list, the quick start, the configuration table and the two file maps; ev
 author needs to read carefully lives here. Anchors cited from code (`REFERENCE "Naming"`, `REFERENCE gotcha 2`) point at
 the headings below, and `docs/page-map.md` remains the behavioural spec cited as `page-map §N`.
 
-Nine sections, in the order they were moved out: [What it does](#what-it-does) ·
-[Two gotchas that will bite you](#two-gotchas-that-will-bite-you) · [Serving and exposure](#serving-and-exposure) ·
-[Logging](#logging) · [Divergences we state out loud](#divergences-we-state-out-loud) ·
+Ten sections: [What it does](#what-it-does) · [Two gotchas that will bite you](#two-gotchas-that-will-bite-you) ·
+[Serving and exposure](#serving-and-exposure) · [Logging](#logging) ·
+[Divergences we state out loud](#divergences-we-state-out-loud) ·
 [Known gaps (what this project deliberately does not do)](#known-gaps-what-this-project-deliberately-does-not-do) ·
-[Development](#development) · [Versions and releases](#versions-and-releases) · [Naming](#naming).
+[Key protection and the data directory](#key-protection-and-the-data-directory) · [Development](#development) ·
+[Versions and releases](#versions-and-releases) · [Naming](#naming).
 
 ---
 
@@ -188,6 +189,26 @@ Out of scope by design, stated rather than left to be discovered:
 
 ---
 
+## Key protection and the data directory
+
+The runtime file map lives in README's [Where the files live](../README.md#where-the-files-live); this is the part that
+cannot be summarised in a table row, because it is the one promise here whose wording has to be exact.
+
+**Key protection, honestly:** on Linux/macOS mypki creates `ca/` as `0700`, writes the key, chmods it to `0600`, then
+re-`stat`s the mode and fails if it is group- or other-accessible. The re-`stat` is the assertion — a chmod that the
+filesystem ignored is reported rather than assumed.
+
+On Windows `os.chmod` only toggles the read-only bit — **it is not an ACL** — so protection comes from three other
+things instead: the key living under per-user `%LOCALAPPDATA%`; optional `icacls` hardening behind `--secure-acl`
+(invoked as a fixed argument array with no user-supplied component, skipped silently if `icacls` is absent); and
+passphrase encryption, which is the cross-platform guarantee. `page-map §8` records the same facts against the code that
+implements them.
+
+Directory precedence, for both the data dir and the config dir `/settings` writes to: `--data-dir` > `MYPKI_DATA_DIR` >
+OS default (XDG on Linux, `%LOCALAPPDATA%\mypki` on Windows). A data dir must not sit inside a web-served directory.
+
+---
+
 ## Development
 
 ```bash
@@ -197,7 +218,7 @@ make fast K=sign   # while editing: cheap subset, targeted tests only
 make docs          # a change that touches only .md: version chain + README's tree claim + two doc-aware test files
 make ready         # stop editing: regenerate generated blocks, then stamp the tree the gate will measure
 make gate          # refuses without that stamp; then lint + types + version chain + suite with coverage + harness
-make zip           # release artifact (run last — a zip is a copy of what was gated)
+make zip           # release artifact into ../dist/ (run last — a zip is a copy of what was gated)
 pre-commit run --all-files
 ```
 
@@ -265,7 +286,7 @@ Manual walkthrough: [../SMOKE_TESTING.md](../SMOKE_TESTING.md), automated by
 
 ## Versions and releases
 
-`src/mypki/__init__.py`'s single line `__version__ = "0.1.0"` is the only place the number lives; `pyproject.toml`
+`src/mypki/__init__.py`'s single `__version__ = "X.Y.Z"` line is the only place the number lives; `pyproject.toml`
 declares `dynamic = ["version"]` and never a static version, hatchling reads that one line, CHANGELOG.md must carry a
 section for it, and releases are annotated tags `vX.Y.Z`. `tools/check_version.py` proves the chain agrees (exit 0),
 reports drift (exit 1) or says it could not check (exit 2 — never read as a pass).

@@ -108,8 +108,8 @@ class InitCaResult:
 
 
 def _is_posix() -> bool:
-    """Whether POSIX permission semantics apply. Windows gets its own story (page-map §8), stated in README
-    "Where the files live"."""
+    """Whether POSIX permission semantics apply. Windows gets its own story (page-map §8), stated in REFERENCE
+    "Key protection and the data directory"."""
     return os.name == "posix"
 
 

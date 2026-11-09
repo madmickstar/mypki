@@ -1,6 +1,7 @@
 # Install and run mypki as a service on Linux
 
-Everything below is measured on this checkout (`mypki 0.7.2`, Python 3.12 in `.venv`, Debian container, systemd 257).
+Everything below is measured on this checkout (`mypki 0.7.3`, Python 3.12 in `.venv`, Debian container, systemd 257): the
+flag spelling was re-read from `mypki serve --help` rather than carried over from the previous release.
 Two things are stated rather than measured, and they are named at the end: starting this unit on a real host, and what
 `systemctl status` prints once it is running there.
 

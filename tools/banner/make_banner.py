@@ -7,14 +7,26 @@ Style facts were MEASURED from the reference PNG (analyze_ref.py), not eyeballed
 
 Deterministic: the mosaic is seeded, so re-running reproduces the same bytes.
 
-In-tree since the README restructure. MEASURED on this box (system python3 with Pillow 12.3.0 -- note that Pillow is NOT
-in .venv, so regenerate with an interpreter that has it installed):
-    python3 tools/banner/make_banner.py assets/banner.png 316 320 0.32
+In-tree since the README restructure.
+
+WHAT THIS TOOL IS NOW: a generator of the superseded mosaic banner, not of the shipped one.
+MEASURED on this box (system python3 with Pillow 12.3.0 -- note that Pillow is NOT in .venv, so regenerate with an
+interpreter that has it installed):
+    python3 tools/banner/make_banner.py /tmp/legacy.png 316 320 0.32
     -> font=316 tracking=320 thr=0.32: glyphs 2380x306, frame interior 2816 wide
-    -> wrote assets/banner.png 2890x578 9860 bytes
-    -> sha256 f9df99a436d781db41d39a450535a31fad2019839e8124fbd796a19d944836cc, identical to the committed banner
-Re-running with the same three arguments therefore reproduces the shipped file byte for byte. `tools/` is linted by
-`make lint`, so this file is held to the same ruff rules as the package even though it ships nothing.
+    -> wrote /tmp/legacy.png 2890x578 9860 bytes
+    -> sha256 f9df99a436d781db41d39a450535a31fad2019839e8124fbd796a19d944836cc
+That hex equals the banner committed up to and including d205240 byte for byte, which is why this tool stays: it is the
+recipe for the design the repo shipped before the swap. The file it wrote is kept outside the tree at
+tmp/banner-legacy-cyan-f9df99a4.png so the claim above can be re-checked.
+
+`assets/banner.png` today is the brand variant (2890x578, 25568 B, sha256
+b94b12d3a4585d946f52aedfe0531da001c90bee0a0ccc6bfbfbcb90b513a0e0), rendered from Style/banners/make_banner_pro.py;
+regenerate the shipped file with
+`python3 Style/banners/make_banner_pro.py --only brand --no-contact-sheet --install brand`, which writes it back to
+build/assets/banner.png. Do not run this tool against assets/banner.png unless you mean to put the mosaic design back.
+
+`tools/` is linted by `make lint`, so this file is held to the same ruff rules as the package although it ships nothing.
 """
 
 from __future__ import annotations

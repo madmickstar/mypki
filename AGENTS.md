@@ -98,10 +98,11 @@ or the log is not quotable.
 - **A documentation change is also a packaging change.** `tests/test_packaging.py` asserts
   `set(sdist_config["include"]) == set(REQUIRED_INCLUDES)` **in both directions**, so adding a shipped file means editing
   `pyproject.toml` *and* `REQUIRED_INCLUDES` in the same commit. A one-sided edit is a red test, not a style issue.
-- **Generated prose must be generated, not typed.** README's "Where the files live" tree list and its path count come from
-  `git ls-files --cached --exclude-standard --others`. `make ready` rewrites them; `make docs` checks them;
-  `tests/test_packaging.py` re-asks git independently and carries four mutation cases (wrong count, missing path, invented
-  path, reordered block) so the assertion cannot be vacuous. On commit `a4dc4f3` README claimed 75 paths (and its fenced
+- **Generated prose must be generated, not typed.** README's "Where the files live" structure tree and its path count come
+  from `git ls-files --cached --exclude-standard --others`, rendered as an indented tree. `make ready` rewrites them;
+  `make docs` checks them; `tests/test_packaging.py` re-asks git independently, draws the tree with its own renderer and
+  carries five mutation cases (wrong count, missing path, invented path, two siblings swapped, a non-path line in the
+  block) so the assertion cannot be vacuous. On commit `a4dc4f3` README claimed 75 paths (and its fenced
   block held exactly 75 lines) while CHANGELOG.md's own entry for the same commit said 74 — both re-read from git today.
   The full-suite logs from that pass were green at 823 passed, but they recorded no tree, so which commit they measured is
   not recoverable: that is rule 3's problem as much as this one. Nothing in the suite could see the disagreement;

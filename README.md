@@ -34,7 +34,24 @@ Reference detail — what each surface does, the two gotchas, serving and exposu
 
 ## Quick Start
 
-Install and run it on Linux, including as a systemd service: [docs/linux_install.md](docs/linux_install.md).
+Python 3.10 or newer. From an unpacked copy of this repository (or a clone), in a virtual environment:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate                      # Windows: .venv\Scripts\activate
+pip install ".[dev]"                      # the app plus what working on it needs (pytest, ruff, mypy)
+pip install .                             # or just the app, no dev extras
+
+mypki init-ca                             # creates the root CA; the browser cannot do this step
+mypki serve                               # http://127.0.0.1:8443
+mypki info                                # which CA is loaded, and where its files live
+```
+
+`init-ca` has to run before `serve`: serving with no CA exits **3**, which means only "no CA found".
+`python -m mypki …` reaches the same CLI in an environment where no console script was installed.
+
+Then, for Linux — installing it as a systemd service, with the unit file that ships in `deploy/`:
+[docs/linux_install.md](docs/linux_install.md).
 
 ## Configuration
 
@@ -61,6 +78,8 @@ Precedence for the data dir: `--data-dir` > `MYPKI_DATA_DIR` > OS default.
 
 ## Where the files live
 
+What mypki writes at runtime, under its data directory (`--data-dir` > `MYPKI_DATA_DIR` > OS default):
+
 ```
 <data>/ca/ca_key.pem         # never served, never logged, never in the DB; 0600 on POSIX
 <data>/ca/ca_cert.pem        # the only certificate served
@@ -69,93 +88,104 @@ Precedence for the data dir: `--data-dir` > `MYPKI_DATA_DIR` > OS default.
 <data>/issued.db             # SQLite (WAL): metadata only, no keys and no PEM bodies
 ```
 
-**Key protection, honestly:** on Linux/macOS mypki creates `ca/` as `0700`, writes the key, chmods it to `0600`, then
-re-`stat`s the mode and fails if it is group- or other-accessible. On Windows `os.chmod` only toggles the read-only
-bit — **it is not an ACL** — so protection comes from the key living under per-user `%LOCALAPPDATA%`, from optional
-`icacls` hardening behind `--secure-acl` (invoked as a fixed argument array with no user-supplied component, skipped
-silently if `icacls` is absent), and from passphrase encryption as the cross-platform guarantee.
+How those files are protected — POSIX modes that are asserted after the write, what `os.chmod` does **not** do on
+Windows, and what protects the key instead — is stated in full in
+[docs/REFERENCE.md](docs/REFERENCE.md#key-protection-and-the-data-directory).
 
 The tree this repository actually ships, taken from `git ls-files --cached --exclude-standard --others` at this commit (78 paths):
 
 ```
-.env.example
-.github/workflows/ci.yml
-.gitignore
-.pre-commit-config.yaml
-AGENTS.md
-CHANGELOG.md
-LICENSE
-Makefile
-README.md
-SMOKE_TESTING.md
-assets/banner.png
-deploy/mypki.service
-docs/REFERENCE.md
-docs/linux_install.md
-docs/page-map.md
-pyproject.toml
-src/mypki/__init__.py
-src/mypki/__main__.py
-src/mypki/app.py
-src/mypki/ca.py
-src/mypki/cli.py
-src/mypki/config.py
-src/mypki/crl.py
-src/mypki/csr.py
-src/mypki/csrf.py
-src/mypki/errors.py
-src/mypki/inspect.py
-src/mypki/keys.py
-src/mypki/logsetup.py
-src/mypki/ocsp_responder.py
-src/mypki/paths.py
-src/mypki/settingsfile.py
-src/mypki/signing.py
-src/mypki/static/app.js
-src/mypki/static/favicon.svg
-src/mypki/static/logo.svg
-src/mypki/static/style.css
-src/mypki/store.py
-src/mypki/templates/about.html
-src/mypki/templates/base.html
-src/mypki/templates/ca_download.html
-src/mypki/templates/crl.html
-src/mypki/templates/csr_generate.html
-src/mypki/templates/csr_sign.html
-src/mypki/templates/error.html
-src/mypki/templates/inspect.html
-src/mypki/templates/issued.html
-src/mypki/templates/settings.html
-src/mypki/validators.py
-tests/conftest.py
-tests/test_bulk_revoke.py
-tests/test_ca_init.py
-tests/test_chain.py
-tests/test_cli.py
-tests/test_consent.py
-tests/test_crl.py
-tests/test_csr_generate.py
-tests/test_csr_validate.py
-tests/test_fast_lane.py
-tests/test_inspect.py
-tests/test_keys.py
-tests/test_nav.py
-tests/test_no_key_leakage.py
-tests/test_ocsp.py
-tests/test_packaging.py
-tests/test_paths.py
-tests/test_san_validation.py
-tests/test_settings_save.py
-tests/test_signing.py
-tests/test_store.py
-tests/test_version.py
-tests/test_views.py
-tools/banner/make_banner.py
-tools/check_version.py
-tools/doc_citations.py
-tools/e2e_harness.py
-tools/fast_lane.py
-tools/tree_manifest.py
+mypki/
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── assets/
+│   └── banner.png
+├── deploy/
+│   └── mypki.service
+├── docs/
+│   ├── REFERENCE.md
+│   ├── linux_install.md
+│   └── page-map.md
+├── src/
+│   └── mypki/
+│       ├── static/
+│       │   ├── app.js
+│       │   ├── favicon.svg
+│       │   ├── logo.svg
+│       │   └── style.css
+│       ├── templates/
+│       │   ├── about.html
+│       │   ├── base.html
+│       │   ├── ca_download.html
+│       │   ├── crl.html
+│       │   ├── csr_generate.html
+│       │   ├── csr_sign.html
+│       │   ├── error.html
+│       │   ├── inspect.html
+│       │   ├── issued.html
+│       │   └── settings.html
+│       ├── __init__.py
+│       ├── __main__.py
+│       ├── app.py
+│       ├── ca.py
+│       ├── cli.py
+│       ├── config.py
+│       ├── crl.py
+│       ├── csr.py
+│       ├── csrf.py
+│       ├── errors.py
+│       ├── inspect.py
+│       ├── keys.py
+│       ├── logsetup.py
+│       ├── ocsp_responder.py
+│       ├── paths.py
+│       ├── settingsfile.py
+│       ├── signing.py
+│       ├── store.py
+│       └── validators.py
+├── tests/
+│   ├── conftest.py
+│   ├── test_bulk_revoke.py
+│   ├── test_ca_init.py
+│   ├── test_chain.py
+│   ├── test_cli.py
+│   ├── test_consent.py
+│   ├── test_crl.py
+│   ├── test_csr_generate.py
+│   ├── test_csr_validate.py
+│   ├── test_fast_lane.py
+│   ├── test_inspect.py
+│   ├── test_keys.py
+│   ├── test_nav.py
+│   ├── test_no_key_leakage.py
+│   ├── test_ocsp.py
+│   ├── test_packaging.py
+│   ├── test_paths.py
+│   ├── test_san_validation.py
+│   ├── test_settings_save.py
+│   ├── test_signing.py
+│   ├── test_store.py
+│   ├── test_version.py
+│   └── test_views.py
+├── tools/
+│   ├── banner/
+│   │   └── make_banner.py
+│   ├── check_version.py
+│   ├── doc_citations.py
+│   ├── e2e_harness.py
+│   ├── fast_lane.py
+│   └── tree_manifest.py
+├── .env.example
+├── .gitignore
+├── .pre-commit-config.yaml
+├── AGENTS.md
+├── CHANGELOG.md
+├── LICENSE
+├── Makefile
+├── README.md
+├── SMOKE_TESTING.md
+└── pyproject.toml
 ```
 
 ## License

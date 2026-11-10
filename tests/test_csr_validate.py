@@ -670,7 +670,7 @@ _REFUSED_EXTENSIONS = (
 #: refused list for this build: it cannot reach a leaf (`signing.leaf_extensions()` takes no CSR extension), and
 #: refusing it meant an operator could not sign a request their own openssl config wrote the extension into. Note what
 #: 0.7.0 did **not** change (page-map §14): a leaf now does carry a CDP, but it is mypki's own
-#: `<crl_base_url>/crl.pem`, added by `leaf_extensions()` — a request's URL is still dropped and disclosed, never
+#: `<crl_base_url>/revoke.crl`, added by `leaf_extensions()` — a request's URL is still dropped and disclosed, never
 #: obeyed. Its name is asserted verbatim so
 #: the move cannot silently drop it.
 _IGNORABLE_EXTENSIONS = (

@@ -16,7 +16,7 @@ What that posture deliberately does **not** include, stated because a reader wil
   * **No revocation lookup.** This host now publishes a CRL and answers OCSP (`crl.py`, `ocsp_responder.py`,
     page-map §14/§15), but **this module consults neither**: `describe_pem` reads the bytes it was handed and nothing
     else, so a certificate reported valid here may have been revoked by whoever issued it — including by this very host,
-    whose CRL lives on `/crl.pem` rather than in this function. That is a deliberate limit rather than an oversight:
+    whose CRL lives on `/revoke.crl` rather than in this function. That is a deliberate limit rather than an oversight:
     `/inspect` accepts arbitrary PEM from arbitrary CAs, and answering "revoked?" for a certificate from a CA this host
     has no relationship with would be a claim it cannot support. `/issued`'s status column is where this CA's own
     revocations are visible.

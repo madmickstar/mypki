@@ -239,7 +239,7 @@ def leaf_extensions(
     # only ever generates RSA-2048/3072/4096 or P-256/P-384 -- so the extra union members cannot arrive here.
     authority_key_id = x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_public_key)  # type: ignore[arg-type]
     extensions.append((authority_key_id, False))
-    # The two pointers. Spelled here rather than handed in pre-assembled: `/crl.pem` and `/ocsp` are routes
+    # The two pointers. Spelled here rather than handed in pre-assembled: `/revoke.crl` and `/ocsp` are routes
     # `app.py` registers, so a caller free to pass an arbitrary URL is a caller that can bake a pointer to a path this
     # app does not serve. One base, two suffixes, one spelling each (plan §3).
     extensions.append(
@@ -247,7 +247,7 @@ def leaf_extensions(
             x509.CRLDistributionPoints(
                 [
                     x509.DistributionPoint(
-                        full_name=[x509.UniformResourceIdentifier(f"{crl_base_url}/crl.pem")],
+                        full_name=[x509.UniformResourceIdentifier(f"{crl_base_url}/revoke.crl")],
                         relative_name=None,
                         reasons=None,
                         crl_issuer=None,

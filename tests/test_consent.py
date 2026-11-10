@@ -292,8 +292,9 @@ def test_a_crl_distribution_point_now_reaches_the_panel_rather_than_a_403(
     closest: a distribution point *looks* like a CA feature (it points at a CRL), and it is the one name a future edit
     would plausibly move back to the refused list. It stays disclosed because **disclosing and obeying are different
     things**: since 0.7.0 this CA publishes its own CRL and bakes its own pointer into every new leaf
-    (`<crl_base_url>/crl.pem`, page-map §14), and a request's distribution point is still dropped rather than honoured
-    (`test_a_consent_grant_never_copies_an_extension_into_the_certificate` proves that half on the parsed certificate).
+    (`<crl_base_url>/revoke.crl`, page-map §14), and a request's distribution point is still dropped rather than
+    honoured (`test_a_consent_grant_never_copies_an_extension_into_the_certificate` proves that half on the parsed
+    certificate).
     Refusing it instead would make a request from a template that carried one unsignable, for no protection at all.
     """
     pem = _csr_pem(
@@ -492,7 +493,7 @@ def test_a_consent_grant_never_copies_an_extension_into_the_certificate(
     panel still lists them — while quietly shipping the request's own KeyUsage on the leaf. So the check is made on the
     parsed certificate. Since 0.7.0 the CRLDistributionPoints half has to be written as **two** claims, because there is
     now a pointer on the leaf and a bare "no CDP appears" assertion is simply false: the request's own
-    `http://crl.internal/crl.der` is not copied, and mypki's own `<crl_base_url>/crl.pem` is present instead. Consent
+    `http://crl.internal/crl.der` is not copied, and mypki's own `<crl_base_url>/revoke.crl` is present instead. Consent
     changes nothing about which of the two a leaf carries — that is decided by `signing.leaf_extensions()` alone.
 
     ExtendedKeyUsage stays the profile's (`serverAuth` only, not the request's clientAuth) and `keyEncipherment` follows
@@ -553,7 +554,7 @@ def test_a_consent_grant_never_copies_an_extension_into_the_certificate(
     # `CRLDistributionPoints` iterates `DistributionPoint` objects; each carries `.full_name` as GeneralNames, whose
     # payload attribute is `.value` (MEASURED: `UniformResourceIdentifier` has no `.uri`).
     urls = [name.value for point in points[0] for name in (point.full_name or [])]
-    assert urls == ["http://mypki.my.lab/crl.pem"], "the request's http://crl.internal/crl.der must not be copied"
+    assert urls == ["http://mypki.my.lab/revoke.crl"], "the request's http://crl.internal/crl.der must not be copied"
     # The configured base comes from the fixture Settings, so a change to the knob changes this assertion loudly.
     assert all(url.startswith("http://mypki.my.lab/") for url in urls)
     eku = certificate.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value

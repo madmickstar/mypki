@@ -240,13 +240,13 @@ def crl_dir(root: Path) -> Path:
 
 
 def crl_path(root: Path) -> Path:
-    """`<data>/crl/mypki.crl.pem` -- the published CRL, rebuilt rather than appended (page-map §14).
+    """`<data>/crl/revoke.crl` -- the published CRL, rebuilt rather than appended (page-map §14).
 
-    One fixed name on purpose. The URL that certificates carry (`<crl_base_url>/crl.pem`) is spelled by `app.py` from
+    One fixed name on purpose. The URL that certificates carry (`<crl_base_url>/revoke.crl`) is spelled by `app.py` from
     `Settings.crl_base_url`, and a filename an operator could configure would be a second spelling of the same location
     -- one that can disagree with the pointer baked into every leaf issued since.
 
     Unlike `ca_key_path`, this file is world-readable by design (see `crl.write_crl_pem`): it is served to anyone who
     asks and contains no secret. The private key stays where `ca_key_path` puts it, at 0600.
     """
-    return crl_dir(root) / "mypki.crl.pem"
+    return crl_dir(root) / "revoke.crl"

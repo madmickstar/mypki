@@ -24,22 +24,6 @@ size, validity window, serial, fingerprint and signature algorithm — plus the 
 and never changes anything: it is a reader, not a verifier.
 </p>
 
-<section class="card">
-  <h2>What this page cannot tell you</h2>
-  <ul class="profile-help">
-    <li><strong>It does not verify a chain.</strong> There is no trust store on this host and no issuer certificate to check
-      against, so it can name an issuer but cannot say that anybody trusts it.</li>
-    <li><strong>It does not know about revocation.</strong> This page reads the document you pasted and consults nothing
-      else: not <a href="/crl">this host's CRL</a>, not <code>/ocsp</code>, not any other CA's. A certificate reported as
-      valid here may still have been revoked by whoever issued it, and a certificate from another CA is not affected by
-      what this host published at all.</li>
-    <li><strong>Its findings are not gates.</strong> A SHA-1 signature or an RSA-1024 key is written down rather than
-      refused. The rules that do refuse live on <a href="/csr/sign">Sign a certificate</a>, which is the page that issues.</li>
-    <li><strong>A private key is named and not opened.</strong> Paste one by accident and this page says it is a key,
-      displays none of it, and does not attempt to decrypt it.</li>
-  </ul>
-</section>
-
 {# `settings-form stacked` is what 0.5.0 borrowed from /settings to get the uppercase label band and the hint styling.
    `inspect-form` exists for one purpose: to scope the width rules in style.css to this page and this page alone, so the
    paste box can span its section (page-map §13). Widening `.settings-form` instead would widen every field on /settings. #}
@@ -54,6 +38,28 @@ and never changes anything: it is a reader, not a verifier.
   </div>
   <button class="save-settings" type="submit">Inspect</button>
 </form>
+
+{# 0.7.4 (operator brief): the limits card moved **below** the paste box and took `/settings`' heading-plus-card shape —
+   a blue `.section-heading` outside a `.card.settings-section`, the pair /ca and /csr/generate already use. It used to sit
+   above the textarea, which meant the first thing this page showed you was four sentences about what it cannot do, before
+   the one control it has. The four sentences are unchanged, word for word: they are this page's honesty contract, asserted
+   as rendered text in `tests/test_inspect.py` and one-per-sentence in the harness's §15, so rewording any of them is a
+   three-file change rather than a tidy-up. #}
+<h2 class="section-heading">Paste PEM</h2>
+<section class="card settings-section">
+  <ul class="profile-help">
+    <li><strong>It does not verify a chain.</strong> There is no trust store on this host and no issuer certificate to check
+      against, so it can name an issuer but cannot say that anybody trusts it.</li>
+    <li><strong>It does not know about revocation.</strong> This page reads the document you pasted and consults nothing
+      else: not <a href="/crl">this host's CRL</a>, not <code>/ocsp</code>, not any other CA's. A certificate reported as
+      valid here may still have been revoked by whoever issued it, and a certificate from another CA is not affected by
+      what this host published at all.</li>
+    <li><strong>Its findings are not gates.</strong> A SHA-1 signature or an RSA-1024 key is written down rather than
+      refused. The rules that do refuse live on <a href="/csr/sign">Sign a certificate</a>, which is the page that issues.</li>
+    <li><strong>A private key is named and not opened.</strong> Paste one by accident and this page says it is a key,
+      displays none of it, and does not attempt to decrypt it.</li>
+  </ul>
+</section>
 
 {# The echo above is the operator's own text with private-key bodies replaced. Saying so is not decoration: a page that
    quietly rewrites what you pasted, with nothing on screen admitting it, is unreadable in exactly the way a settings page

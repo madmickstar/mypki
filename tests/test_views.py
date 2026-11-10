@@ -785,7 +785,7 @@ def test_a_refused_paste_is_named_on_the_sign_page_above_the_box_it_belongs_to(c
     body = response.text
 
     refusal_at = body.index('<section class="form-errors refused">')
-    label_at = body.index('<label for="csr_pem">Paste a CSR (PEM)</label>')
+    label_at = body.index('<label class="paste-label" for="csr_pem">Paste a CSR (PEM)</label>')
     textarea_at = body.index('name="csr_pem"')
     assert refusal_at < label_at < textarea_at, "the refusal must sit above the box it is about"
 
@@ -1248,7 +1248,7 @@ def test_a_record_can_be_revoked_from_the_issued_page_and_says_what_that_does_no
     assert again.status_code == 200
     assert '<span class="pill revoked">revoked</span>' in again.text
     assert 'class="pill active"' not in again.text
-    assert re.search(r'<span class="hint">revoked \d{4}-\d{2}-\d{2}', again.text)
+    assert re.search(r'<span class="hint">\d{4}-\d{2}-\d{2}', again.text)
 
 
 def test_a_revoke_for_an_unknown_serial_is_404_naming_the_serial_and_the_database(

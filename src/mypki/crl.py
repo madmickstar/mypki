@@ -25,7 +25,7 @@ DELETE (`store.py`, page-map §5) — so the number can only stay level or grow.
 Why there is **no `IssuingDistributionPoint`** (measured, and the sharpest reason in this plan)
 --------------------------------------------------------------------------------------------
 An IDP scopes a CRL to a name and/or a subset of certificates. Measured with openssl 3.5.6 against a CRL carrying
-`IDP(full_name=http://mypki.my.lab/crl.pem, only_contains_user_certs=True, critical)`: `openssl verify -crl_check`
+`IDP(full_name=http://mypki.my.lab/revoke.crl, only_contains_user_certs=True, critical)`: `openssl verify -crl_check`
 answers **`error 44 at 0 depth lookup: different CRL scope`, rc=2** for a *perfectly valid leaf that carries no CDP at
 all* — i.e. every certificate of this CA carrying no pointer, and anything minted elsewhere against it. The plain-CRL
 control verifies `OK` rc=0. Adding an IDP would therefore make `-crl_check` unusable on this CA's own history. Both
@@ -135,8 +135,8 @@ def build_crl(
     its database too.
 
     An empty entry set is legal and signs fine (an empty CRL verifies with `is_signature_valid` True), so a
-    CA that has never revoked anything still answers `/crl.pem` with a valid, current, zero-entry artifact rather than a
-    404.
+    CA that has never revoked anything still answers `/revoke.crl` with a valid, current, zero-entry artifact rather
+    than a 404.
 
     No private key is read here; `bundle.key` must already be loaded by the caller (`ca.load_ca`, once at startup).
     """
@@ -259,7 +259,7 @@ def crl_pem(crl: x509.CertificateRevocationList) -> str:
 
 
 def read_crl_pem(path: Path) -> x509.CertificateRevocationList:
-    """Load `<data>/crl/mypki.crl.pem` back as an object.
+    """Load `<data>/crl/revoke.crl` back as an object.
 
     Raises `FileNotFoundError` for a host that has not built one (the handler turns that into the page's "no CRL yet"
     state rather than a 500) and re-raises cryptography's parse failure for a truncated file — which is the case the
@@ -275,8 +275,8 @@ def write_crl_pem(path: Path, pem: str) -> None:
     silently degrade to a copy that can be interrupted.
 
     Mode: ordinary permissions (0644 umask-respecting), following `ca_cert_path`'s precedent rather than
-    `PRIVATE_FILE_MODE = 0o600`. This artifact is served to anyone by `GET /crl.pem`, so owner-only mode would protect a
-    secret this file is not. It still lives under `<data>/`, never inside a web-served directory (page-map §8, and the
+    `PRIVATE_FILE_MODE = 0o600`. Served to anyone by `GET /revoke.crl`, so owner-only mode would protect a secret this
+    file is not. It still lives under `<data>/`, never inside a web-served directory (page-map §8, and the
     rule in `paths.py`'s docstring).
     """
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -304,7 +304,7 @@ def _make_publicly_readable(path: str) -> None:
     """0644 on POSIX. Stated as a no-op-with-a-caveat on Windows rather than pretended to work.
 
     Deliberately **not** `PRIVATE_FILE_MODE = 0o600` (`ca.py`): that constant protects `<data>/ca/ca_key.pem`, and this
-    file is served to anyone by `GET /crl.pem`. Owner-only mode here would protect nothing and break a reader that is
+    file is served to anyone by `GET /revoke.crl`. Owner-only mode here would protect nothing and break a reader that is
     not the mypki user.
 
     Windows: `os.chmod` can only toggle the read-only bit, so NTFS ACLs decide who actually reads — the same honest gap

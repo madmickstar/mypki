@@ -27,6 +27,78 @@ check*, which is never a pass. A section below is written **when its release is 
 that has not shipped is exactly what `check_version.py` reports as drift, because it reads to a user as a promise about a
 release that does not exist.
 
+## [0.7.4] - 2026-11-10
+
+### Changed
+
+- **The published CRL is `revoke.crl`, in every place a name appears.** `GET /crl.pem` became `GET /revoke.crl`,
+  `<data>/crl/mypki.crl.pem` became `<data>/crl/revoke.crl` (`paths.crl_path`), the URL baked into new leaves'
+  `CRLDistributionPoints` is `{crl_base_url}/revoke.crl` (`signing.leaf_extensions`), the download button on `/crl` and the
+  `Content-Disposition` filename are both `revoke.crl` (`app.CRL_FILENAME`), and the curl/openssl recipe printed on `/crl`
+  reads `-o revoke.crl`. The media type did not move: still `application/pkix-crl`, still `no-store`, still one fixed name
+  nobody can configure — the point of the rename is that the file, the route, the advertised URL and the attachment are now
+  **one spelling** instead of three (`mypki.crl.pem` on disk, `/crl.pem` in the certificate, `revoke` in the operator's head).
+  Touched across `paths.py`, `app.py`, `signing.py`, `crl.py`, `config.py`, `inspect.py`, `templates/crl.html`,
+  `docs/page-map.md` §14, `docs/REFERENCE.md`, README and `.env.example`, with the matching needles in
+  `tests/test_crl.py`, `test_signing.py`, `test_consent.py`, `test_ocsp.py`, `test_no_key_leakage.py`,
+  `test_csr_validate.py` and `tools/e2e_harness.py`.
+- **A leaf issued in 0.7.0–0.7.3 advertises a URL this build does not serve.** Its CDP still reads
+  `<crl_base_url>/crl.pem`, and this app no longer registers that route: a client that follows the pointer gets whatever
+  answers that path on the host, which is nothing mypki produces. **There is no migration, no re-issue and no compatibility
+  route**, deliberately — `signing.py` bakes extensions at signing time and mypki cannot edit a certificate that already left
+  the building. This is the same posture `/crl` has always stated for certificates issued before 0.7.0 (they carry no pointer
+  at all): the artifact is unchanged and still verifies, so those leaves can be checked by handing it to a client explicitly
+  (`openssl crl -in revoke.crl -noout -CAfile mypki-root-ca.crt`, `openssl verify -crl_check -CRLfile revoke.crl`). What is
+  new in 0.7.4 is that the gap has one more entry: **leaves issued in 0.7.0–0.7.3 now belong to the class of certificates whose
+  stated pointer does not resolve against this build**. Stated here rather than on `/crl`: that page's four-item caveat list still
+  names only the pre-0.7.0 gap, and rewriting it was outside this pass (its wording is asserted needle-for-needle in
+  `tests/test_crl.py` and the harness's §11, so a change there is a three-file change). `/crl`'s lede — "certificates issued from
+  0.7.4 onward carry that exact URL" — was corrected with the rename and is true of what this build signs. Certificates issued from
+  0.7.4 onward carry `/revoke.crl` and resolve.
+- **Country Code (C) on Generate-CSR is a dropdown** (`<select id="country" name="country">`) built by
+  `validators.country_options()` from a new `validators.COUNTRY_NAMES` — ISO 3166-1 alpha-2, code order, `AU — Australia` on
+  screen and `AU` in the value posted — handed to the page through `generate_context`. The constant lives beside
+  `validate_country`, which already owns the rule, so the menu cannot offer what the validator would refuse; picking an option
+  is not a shortcut past validation. A blank `— not set —` row comes first (an empty country is legal), and a prefilled value
+  no listed code matches arrives as its own row rather than rendering as "Aland Islands". The `<select>` carries `name=`
+  itself, unlike `/settings`' Issuing-limits dropdowns, because there is no text box behind it (page-map §2).
+- **Three UI changes** (an operator brief; page-map §3, §5, §13):
+  - `/csr/sign`'s `Paste a CSR (PEM)` label now carries `.paste-label`, defined in `static/style.css` as
+    `color: var(--blue)`. It is a **class**, not an inline `style=` attribute: the app's CSP is `default-src 'self'` with no
+    `'unsafe-inline'`, so a style written in markup would keep its weight and silently lose its colour.
+  - `/issued` lost its lede. The sentence it carried (no detail page, no search, no delete; a record kept as evidence) is
+    still true and is stated where an operator meets it — the column list in page-map §5, the hint under the table, and
+    `docs/REFERENCE.md` "Known gaps".
+  - `/issued`'s Status cell states its decision once: the stamp span now holds only `YYYY-MM-DD HH:MM:SSZ`, because the pill
+    beside it already reads `revoked` on exactly those rows. The harness needle moved with it — `class="hint">YYYY-MM-DD`
+    instead of `class="hint">revoked YYYY-MM-DD` — in `tools/e2e_harness.py`, `tests/test_bulk_revoke.py`,
+    `tests/test_views.py`, page-map §5 and SMOKE_TESTING §10/§11.
+  - `/inspect`'s "what this page cannot tell you" card moved **below** the paste box and took `/settings`' shape: a blue
+    `<h2 class="section-heading">Paste PEM</h2>` outside a `<section class="card settings-section">`. The four sentences are
+    unchanged word for word, so §15's one-per-sentence counts still hold; only their position moved.
+- **Byte-exact needles that the label change broke were repaired rather than loosened**: `tests/test_views.py`'s refusal-order
+  assertion and `tools/e2e_harness.py`'s offset comparison both now search for the label *with its class*, so the order
+  assertion still proves "the refusal sits above the box it is about" against a page whose label markup changed.
+
+### Testing
+
+- **Counts re-measured on this tree, not inherited.** `pytest --collect-only` answers **831 tests**, and the same command run in a
+  detached worktree checked out at `79012a1` also answers 831 — this pass moved needles and prose; it added no test and removed none.
+  The suite without coverage answers **831 passed** (243.02 s on this tree before stamping; the closing gate re-measures it with coverage, and
+  its numbers belong to that commit's message). The harness was run standalone (`make e2e`, exit 0, **4,847 ms** wall):
+  **328 pass / 0 fail / 0 warn** over its 17 sections, and before any number was quoted the log was checked for exactly one
+  `tools/e2e_harness.py` invocation and 17 section lines (AGENTS.md rule 3). The scoped fast lanes answer **247 passed** over
+  `csr_generate or csr_sign or views or inspect or bulk_revoke or packaging`, **147 passed** over `crl or ocsp or consent or signing or
+  leakage`, and `make docs` answers **71 passed** — the same 71 its two files answer at `79012a1`, re-measured in a detached worktree so
+  the number quoted here is not an inherited one.
+- **The gate that closes this release is quoted in the commit message, not here**, following the rule 0.7.3 recorded: an entry
+  that quoted the tree it was written into would move the tree it names. What this section records is what was measured before
+  the tree was declared final.
+- **What remains unmeasured** is the rendering of all four UI changes — no browser exists on the host these edits were made on,
+  so `.paste-label`, the moved `/inspect` card and the dropdown are asserted as markup (a class present in the served asset, a
+  `<select>` posting its own value) and never as a page that looks right. SMOKE_TESTING §2 now records this build's stylesheet
+  size (**33,002 bytes**, sha256 `f5397c04…`) next to the sizes earlier commits served.
+
 ## [0.7.3] - 2026-11-09
 
 ### Changed
@@ -775,7 +847,8 @@ only the per-release *files* are gone.
 - **[0.2.0]** - 2026-10-28 - `bc0031b^:docs/history/0.2.0.md`
 - **[0.1.0]** - 2026-10-26 - `bc0031b^:docs/history/0.1.0.md`
 
-[Unreleased]: https://github.com/madmickstar/mypki/compare/v0.7.3...HEAD
+[Unreleased]: https://github.com/madmickstar/mypki/compare/v0.7.4...HEAD
+[0.7.4]: https://github.com/madmickstar/mypki/releases/tag/v0.7.4
 [0.7.3]: https://github.com/madmickstar/mypki/releases/tag/v0.7.3
 [0.7.2]: https://github.com/madmickstar/mypki/releases/tag/v0.7.2
 [0.7.1]: https://github.com/madmickstar/mypki/releases/tag/v0.7.1

@@ -134,7 +134,7 @@ def _stamp(store: IssuedStore, serial_hex: str, *, not_after_days: int, reason: 
 def test_a_zero_entry_crl_signs_and_verifies(throwaway_ca: CaBundle) -> None:
     """A CA that has never revoked anything still publishes a valid CRL (MEASURED in plan §2, re-asserted here).
 
-    The alternative — 404 until the first revocation — would make `GET /crl.pem` a route whose behaviour changes with
+    The alternative — 404 until the first revocation — would make `GET /revoke.crl` a route whose behaviour changes with
     operator history, and would leave `/crl` unable to show "this CA published a CRL listing nothing". An empty
     CRL is what RFC 5280 §5.3.1 expects for that state.
     """
@@ -240,7 +240,7 @@ def test_extensions_are_crl_number_and_aki_both_non_critical(throwaway_ca: CaBun
 def test_no_issuing_distribution_point_and_no_delta_crl_indicator(throwaway_ca: CaBundle) -> None:
     """The measured refusal (plan §2 / P-CRL-3), asserted so it cannot be re-added quietly.
 
-    openssl 3.5.6, MEASURED: against a CRL carrying `IssuingDistributionPoint(full_name=http://mypki.my.lab/crl.pem,
+    openssl 3.5.6, MEASURED: against a CRL carrying `IssuingDistributionPoint(full_name=http://mypki.my.lab/revoke.crl,
     only_contains_user_certs=True, critical)`, `openssl verify -crl_check` answers **`error 44 at 0 depth lookup:
     different CRL scope`, rc=2** for a *valid leaf with no CDP at all* — every certificate this CA issued before 0.7.0 —
     while the plain-CRL control verifies `OK` rc=0. An IDP would make `-crl_check` unusable on this CA's own history.
@@ -282,7 +282,7 @@ def _crl_without_next_update(crl: x509.CertificateRevocationList) -> x509.Certif
     MEASURED on 50.0.2), yet `CertificateRevocationList.next_update_utc` is typed `datetime | None` because DER allows
     the field to be absent (RFC 5280 §5.1.2.4). The only way to hand `summarise_crl` that object is to cut it out of the
     bytes a real build produced and repair the two length headers around the cut — which is precisely what a hand-edited
-    or half-written `<data>/crl/mypki.crl.pem` amounts to, and `_published_crl` does read that file back from disk.
+    or half-written `<data>/crl/revoke.crl` amounts to, and `_published_crl` does read that file back from disk.
 
     Scoped to a zero-entry CRL on purpose: an entry's own `revocationDate` is also a UTCTime, so the "exactly two"
     assertion below is what keeps this helper from silently cutting the wrong field.
@@ -375,7 +375,7 @@ def test_pem_armour_is_the_x509_crl_block_and_round_trips(throwaway_ca: CaBundle
     assert reloaded.is_signature_valid(throwaway_ca.cert.public_key())
     assert len(list(reloaded)) == 1
 
-    path = tmp_path / "crl" / "mypki.crl.pem"
+    path = tmp_path / "crl" / "revoke.crl"
     write_crl_pem(path, pem)
     assert read_crl_pem(path) == built
 
@@ -385,27 +385,27 @@ def test_write_is_atomic_and_leaves_no_temp_files(tmp_path: Path) -> None:
 
     A half-written CRL is worse than an old one: a client that fetched it mid-write sees a parse failure and cannot
     tell "the CA revoked this" from "the disk lied". The absence of leftovers is asserted because `tempfile` in the same
-    directory makes that cheap, and a stray `.mypki.crl.pem.abc123.tmp` in `<data>/crl/` is exactly the kind of file an
+    directory makes that cheap, and a stray `.revoke.crl.abc123.tmp` in `<data>/crl/` is exactly the kind of file an
     operator finds months later with no idea what it is.
     """
-    path = tmp_path / "crl" / "mypki.crl.pem"
+    path = tmp_path / "crl" / "revoke.crl"
 
     write_crl_pem(path, "-----BEGIN X509 CRL-----\nZm9v\n-----END X509 CRL-----\n")
 
     assert path.is_file()
     siblings = sorted(entry.name for entry in path.parent.iterdir())
-    assert siblings == ["mypki.crl.pem"], siblings
+    assert siblings == ["revoke.crl"], siblings
 
 
 def test_the_crl_file_is_world_readable_because_it_is_served(tmp_path: Path) -> None:
     """0644-ish, following `ca_cert_path`'s precedent and **not** `PRIVATE_FILE_MODE = 0o600`.
 
-    This artifact is served to anyone by `GET /crl.pem`; owner-only mode would protect something that is not a secret.
-    Asserted loosely (`& 0o044`) rather than exactly because umask differs between hosts and CI runners, and the claim
-    worth keeping true is "readable by others", not "exactly 644". A `.key`/`.pem` CA file keeps its 0600 assertion in
-    `test_ca_init.py`; this one must not inherit it.
+    This artifact is served to anyone by `GET /revoke.crl`; owner-only mode would protect something that is not a
+    secret. Asserted loosely (`& 0o044`) rather than exactly because umask differs between hosts and CI runners, and the
+    claim worth keeping true is "readable by others", not "exactly 644". A `.key`/`.pem` CA file keeps its 0600
+    assertion in `test_ca_init.py`; this one must not inherit it.
     """
-    path = tmp_path / "crl" / "mypki.crl.pem"
+    path = tmp_path / "crl" / "revoke.crl"
 
     write_crl_pem(path, "-----BEGIN X509 CRL-----\nZm9v\n-----END X509 CRL-----\n")
     mode = path.stat().st_mode
@@ -416,11 +416,11 @@ def test_the_crl_file_is_world_readable_because_it_is_served(tmp_path: Path) -> 
 def test_reading_a_missing_file_raises_file_not_found(tmp_path: Path) -> None:
     """`FileNotFoundError`, so the handler can render "no CRL yet" instead of a 500.
 
-    The distinction matters for `GET /crl.pem` on a host whose CA failed to load: the honest answer is that nothing has
-    been published, and a 500 would read as a broken CA (page-map §6's posture for missing state).
+    The distinction matters for `GET /revoke.crl` on a host whose CA failed to load: the honest answer is that nothing
+    has been published, and a 500 would read as a broken CA (page-map §6's posture for missing state).
     """
     with pytest.raises(FileNotFoundError):
-        read_crl_pem(tmp_path / "crl" / "mypki.crl.pem")
+        read_crl_pem(tmp_path / "crl" / "revoke.crl")
 
 
 # ---------------------------------------------------------------------------- serial round-trips
@@ -674,9 +674,9 @@ def test_crl_base_url_must_be_a_full_http_or_https_url(settings: Settings) -> No
 def test_a_trailing_slash_is_stripped_once_so_the_paths_cannot_double(tmp_path: Path) -> None:
     """`http://host/` and `http://host` produce the same CDP.
 
-    The app spells paths itself (`/crl.pem`, `/ocsp`) so there is one spelling of each URL (plan §3). A trailing slash
-    left in place produces `http://host//crl.pem` in a certificate — legal to encode, broken to fetch, and invisible on
-    `/settings`.
+    The app spells paths itself (`/revoke.crl`, `/ocsp`) so there is one spelling of each URL (plan §3). A trailing
+    slash left in place produces `http://host//revoke.crl` in a certificate — legal to encode, broken to fetch, and
+    invisible on `/settings`.
     """
     assert Settings(crl_base_url="http://mypki.my.lab/").crl_base_url == "http://mypki.my.lab"
     assert Settings(crl_base_url="  http://mypki.my.lab  ").crl_base_url == "http://mypki.my.lab"
@@ -701,35 +701,36 @@ def test_the_pem_marker_is_the_one_spelling_the_page_asserts() -> None:
 
 
 def _artifact(client: object) -> object:
-    """`GET /crl.pem` parsed as a CRL, or an explicit failure naming the status.
+    """`GET /revoke.crl` parsed as a CRL, or an explicit failure naming the status.
 
     Raises rather than returning None so every caller of this helper is asserting a working artifact; a test that
     quietly accepted a 503 would pass against a host that publishes nothing.
     """
-    response = client.get("/crl.pem")  # type: ignore[union-attr]
+    response = client.get("/revoke.crl")  # type: ignore[union-attr]
     if response.status_code != 200:
-        raise AssertionError(f"GET /crl.pem answered {response.status_code}: {response.text[:400]}")
+        raise AssertionError(f"GET /revoke.crl answered {response.status_code}: {response.text[:400]}")
     return x509.load_pem_x509_crl(response.content)
 
 
 def test_startup_publishes_a_zero_entry_crl(session_client, data_root: Path, throwaway_ca: CaBundle) -> None:
     """A CA + key host publishes before anyone revokes anything (plan §4's first trigger).
 
-    Three claims at once: the file exists at the documented path, `GET /crl.pem` answers it with the headers page-map §0
-    requires for a served artifact, and the zero-entry CRL verifies against this CA's own public key. The last one
+    Three claims at once: the file exists at the documented path, `GET /revoke.crl` answers it with the headers
+    page-map §0 requires for a served artifact, and the zero-entry CRL verifies against this CA's own public key. The
+    last one
     is the reason a 404-until-the-first-revoke design was rejected: an empty CRL is a valid statement, and "nothing
     has been revoked here" is worth being able to prove.
     """
     path = paths.crl_path(data_root)
     assert path.is_file(), f"startup published nothing at {path}"
 
-    response = session_client.get("/crl.pem")
+    response = session_client.get("/revoke.crl")
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pkix-crl"
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
     # Literal, never `_safe_stem()`: the download name is the on-disk name and there is no operator input to filter.
-    assert response.headers["content-disposition"] == 'attachment; filename="mypki.crl.pem"'
+    assert response.headers["content-disposition"] == 'attachment; filename="revoke.crl"'
 
     crl = x509.load_pem_x509_crl(response.content)
     assert list(crl) == []
@@ -752,14 +753,14 @@ def test_the_published_file_is_world_readable(session_client, data_root: Path) -
 
 
 def test_the_page_and_the_artifact_are_one_source(session_client) -> None:
-    """`/crl` renders the same bytes `GET /crl.pem` serves, because both read the file.
+    """`/crl` renders the same bytes `GET /revoke.crl` serves, because both read the file.
 
     The failure mode this closes is a page describing a CRL that does not exist: a build remembered in a variable, or a
     write that failed after the page's data was computed. Asserting body equality rather than "both mention a serial" is
     what makes them one implementation (page-map §1).
     """
     page = session_client.get("/crl")
-    artifact = session_client.get("/crl.pem")
+    artifact = session_client.get("/revoke.crl")
 
     assert page.status_code == 200
     assert CRL_PEM_MARKER in page.text
@@ -783,7 +784,7 @@ def test_the_page_states_all_four_measured_limits(session_client) -> None:
     assert "revoked certificate that has already expired drops out of the CRL" in page.text
     assert "UNKNOWN" in page.text
     # The advertised absolute URL, spelled from the knob rather than from the request's Host header.
-    assert "http://mypki.my.lab/crl.pem" in page.text
+    assert "http://mypki.my.lab/revoke.crl" in page.text
     assert "http://mypki.my.lab/ocsp" in page.text
 
 
@@ -928,7 +929,7 @@ def test_a_host_with_no_ca_publishes_nothing_and_answers_503(client_without_ca, 
 
     Three halves. Startup writes **nothing** (an empty directory under `<data>` would be a promise this host cannot
     keep); `/crl` still renders its page with the no-CA notice, because every page must handle the uninitialised
-    state; and `/crl.pem` answers 503 through the existing `CaNotFoundError` handler, whose hint is the command that
+    state; and `/revoke.crl` answers 503 through the existing `CaNotFoundError` handler, whose hint is the command that
     fixes it.
     """
     assert not paths.crl_dir(data_root).exists(), f"a keyless host created {paths.crl_dir(data_root)}"
@@ -937,7 +938,7 @@ def test_a_host_with_no_ca_publishes_nothing_and_answers_503(client_without_ca, 
     assert page.status_code == 200
     assert "Run `mypki init-ca`" in page.text
 
-    artifact = client_without_ca.get("/crl.pem")
+    artifact = client_without_ca.get("/revoke.crl")
     assert artifact.status_code == 503
     assert "No CA found at" in artifact.text
     assert CRL_PEM_MARKER not in artifact.text

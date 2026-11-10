@@ -25,7 +25,7 @@ Reference detail — what each surface does, the two gotchas, serving and exposu
 - A browser page validates a pasted CSR and shows what it actually asks for before anything is signed.
 - Certificates are issued from mypki's own extension profile for `server`, `client` or `both`.
 - The CA certificate is downloadable with per-OS install instructions and a fingerprint to verify out of band.
-- A signed CRL is published at `/crl.pem` and its facts are shown on `/crl`.
+- A signed CRL is published at `/revoke.crl` and its facts are shown on `/crl`.
 - An OCSP responder answers GOOD / REVOKED / UNKNOWN over `POST /ocsp`.
 - The issued list shows what has been signed, newest first, and marks records revoked in bulk.
 - Any PEM can be pasted into `/inspect` and read back: subject, issuer, SANs, key, validity, serial and fingerprint.

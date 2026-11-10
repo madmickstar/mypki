@@ -3,12 +3,12 @@
 {% block content %}
 <h1>Issued certificates</h1>
 
-<p class="lede">
-Newest first. There is no detail page, no search and no delete: a record is kept because it is evidence of what this CA
-signed (docs/REFERENCE.md "Known gaps"). A record can be <strong>marked revoked</strong>, one at a time or several at
-once &mdash; read
-the sentence under the table before you rely on that.
-</p>
+{# 0.7.4 (operator brief): this page has no lede. What used to sit here was four claims — newest first, no detail page,
+   no search, no delete, a record kept as evidence — and none of them was new information on this page: the column order is
+   spelled by the table itself, "no un-revoke and no delete" is stated under it (the hint below this form), and the rest is
+   written down in docs/page-map.md §5 and docs/REFERENCE.md's /issued row and "Known gaps". A lede that repeats what three
+   other places already say is one more paragraph to skim on a page whose whole job is a table. Nothing about the page's
+   behaviour changed with this deletion; only its opening paragraph did. #}
 
 {% if no_ca_notice %}
 <p class="notice">{{ no_ca_notice }}</p>
@@ -170,11 +170,16 @@ the sentence under the table before you rely on that.
 
            0.4.0 puts the revocation stamp here rather than in its own column: a row had a Status pill AND a Revoked column
            saying almost the same thing, and the pair could disagree if one was misread. One cell now carries the decision,
-           when it was made and why. The e2e harness scrapes `class="hint">revoked YYYY-MM-DD` from this cell, so the shape of
-           the stamp line is a contract even though its column is gone. #}
+           when it was made and why.
+
+           0.7.4 removes one word from that sentence, for the reason 0.4.0 gives for the column: the pill beside this span
+           already reads `revoked` whenever the span renders at all, so writing the word twice in one cell said it twice and
+           added nothing. What remains is the timestamp — `class="hint">` followed by `YYYY-MM-DD HH:MM:SSZ` — and the reason
+           under it. The e2e harness scrapes `class="hint">YYYY-MM-DD` from this cell, so the shape of the stamp line is still
+           a contract even though its column is gone and its leading word is. #}
         <td>
           <span class="pill {{ record.status }}">{{ record.status }}</span>
-          {% if record.revoked_at_utc %}<span class="hint">revoked {{ record.revoked_at_utc.strftime('%Y-%m-%d %H:%M:%S') }}Z</span>{% endif %}
+          {% if record.revoked_at_utc %}<span class="hint">{{ record.revoked_at_utc.strftime('%Y-%m-%d %H:%M:%S') }}Z</span>{% endif %}
           {% if record.revocation_reason %}<div class="hint">{{ record.revocation_reason }}</div>{% endif %}
         </td>
         <td class="mono">{{ record.serial_hex }}</td>

@@ -152,9 +152,10 @@ class Settings(BaseSettings):
         default="http://mypki.my.lab",
         description=(
             "Absolute HTTP(S) base this CA advertises inside the certificates it issues: `CRLDistributionPoints` is "
-            "this base plus `/crl.pem`, and `AuthorityInformationAccess` is this base plus `/ocsp`. Plain `str`, not "
-            "`… | None`: there is always a value, so clearing the box is refused naming this knob rather than silently "
-            "reverting. Changing it changes only certificates issued **after** the change — a leaf already installed "
+            "this base plus `/revoke.crl`, and `AuthorityInformationAccess` is this base plus `/ocsp`. Plain `str`, "
+            "not `… | None`: there is always a value, so clearing the box is refused naming this knob rather than "
+            "silently reverting. Changing it changes only certificates issued **after** the change — a leaf already "
+            "installed "
             "somewhere keeps the pointer it was born with and mypki cannot edit it. The name must resolve where the "
             "clients are: binding 127.0.0.1 while advertising a host name leaves the CRL and OCSP URLs unreachable "
             "without DNS, a hosts entry or a proxy (page-map §14)."
@@ -438,7 +439,7 @@ class Settings(BaseSettings):
         raises `SettingsFileError` for a knob outside `_EMPTY_LINE_IS_A_CHOICE`) — there is deliberately no "unset means
         no CDP" branch anywhere in the app.
 
-        Trailing slashes are stripped rather than rejected: `http://host//crl.pem` is legal to encode and broken to
+        Trailing slashes are stripped rather than rejected: `http://host//revoke.crl` is legal to encode and broken to
         fetch, and a doubled slash is invisible on `/settings`.
         """
         text = "" if value is None else str(value).strip()

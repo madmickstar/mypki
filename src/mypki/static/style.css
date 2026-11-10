@@ -442,6 +442,18 @@ form.inspect-form #pem_paste { width: 100%; max-width: none; }
 
 form.inspect-form button.save-settings { max-width: none; }
 
+/* 0.7.4 (operator brief): the CSR paste label on `/csr/sign` takes the blue this app already uses for a section
+   heading — `--blue`, the colour of `.section-heading`, of links, and of `.select-count` — so that the one control step A
+   is about reads as the box to fill rather than as another sentence above it. The colour travels on a class rather than
+   on an inline `style=` attribute because this app's CSP is `default-src 'self'` with no `'unsafe-inline'`, which admits
+   a stylesheet from `/static` and drops a style written in markup (page-map §0): such a label would keep its weight and
+   silently lose its colour. Only the colour changes here — the generic `label` rule above still supplies the weight, the
+   block layout and the margin, and no other element on any page carries `.paste-label`. `/inspect`'s paste keeps its own
+   label styling; that field already spans its section and gained a heading of its own in this same pass. No browser
+   exists on the host this rule was written on, so what is checkable from here is only that the stylesheet defines the
+   rule and that `/csr/sign`'s markup asks for it — the colour as rendered stays SMOKE_TESTING territory. */
+.paste-label { color: var(--blue); }
+
 .checkbox-line { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.35rem; font-weight: 500; text-transform: none; letter-spacing: 0; }
 .checkbox-line input { width: auto; max-width: none; }
 

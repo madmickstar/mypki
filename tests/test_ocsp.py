@@ -573,7 +573,7 @@ def test_the_route_answers_der_at_200_with_no_session_and_no_token(session_clien
 
     Asserted as headers rather than as "the handler does not call `require_csrf`": the observable contract is that a
     request carrying no cookie, no token and no HTML ever seen by the client gets a DER answer. `Cache-Control:
-    no-store` carries weight here equal to `/crl.pem` and arguably more — an OCSP answer states whether a certificate
+    no-store` carries weight here equal to `/revoke.crl` and arguably more — an OCSP answer states whether a certificate
     is revoked **now**, and a proxy replaying a cached GOOD keeps a revoked certificate trusted for the length of that
     cache.
 
@@ -756,10 +756,10 @@ def test_a_keyless_host_answers_internal_error_rather_than_503_or_html(
 ) -> None:
     """A host that cannot sign answers `INTERNAL_ERROR` at 200 — the protocol's word for "this responder cannot answer".
 
-    `/crl.pem` answers 503 for the same missing state and the difference is deliberate rather than inconsistent: whoever
-    fetches a CRL is a human's tool following a URL, and mypki's page with a hint helps it; an OCSP client is a library
-    that can only read DER. A 503 carrying HTML would be reported as "responder unreachable", hiding the actual fact (no
-    CA private key on this host), which is precisely the diagnosis an operator needs.
+    `/revoke.crl` answers 503 for the same missing state and the difference is deliberate rather than inconsistent:
+    whoever fetches a CRL is a human's tool following a URL, and mypki's page with a hint helps it; an OCSP client is a
+    library that can only read DER. A 503 carrying HTML would be reported as "responder unreachable", hiding the actual
+    fact (no CA private key on this host), which is precisely the diagnosis an operator needs.
 
     Built by removing the key from a loaded bundle rather than by using no CA at all: `mypki serve` on a host whose key
     cannot be decrypted runs this way, and "no CA" and "CA without a key" are different states (the same distinction

@@ -222,7 +222,11 @@ generate-form"` exactly once and `class="section-heading"` exactly twice, `<fiel
 used since 0.1.0), and `data-mypki-copy-url=` exactly once on `/ca` — the app's only URL-wired copy button. As in 0.5.2, the two GETs are not assertions; only
 their counts are. MEASURED **on this build** rather than carried forward: `GET /static/style.css` answers 200 with **31,766 bytes**, sha256 `8b4d507fb6660b…`,
 byte-identical to the file (`wc -c src/mypki/static/style.css` agrees) — 2,939 bytes above the 28,827 quoted above, which is what adding two CSS blocks does. The
-older number stays where it is because it is what the earlier commits in this tree served. The shipped **0.7.0** zip carries a different asset —
+older number stays where it is because it is what the earlier commits in this tree served. **0.7.4 adds one more rule to the same file** — `.paste-label { color: var(--blue); }` on `/csr/sign`'s paste label (page-map §3's refused-paste paragraph; §12's CSP posture is why it is a class and not an inline style) — and MEASURED on this build the asset answers 200 with
+**33,002 bytes**, sha256 `f5397c040fe46c…` (`wc -c src/mypki/static/style.css` agrees): 1,236 bytes above the 31,766 quoted above, which is one
+comment block and one declaration. As in 0.7.1, nothing asserts that size — §2's assertions are rule-text and class counts — so what this build
+asserts about the new rule is only that `tests/test_views.py` and §7 find the label **with its class** in the rendered refusal page; the colour
+itself stays unmeasurable here. The shipped **0.7.0** zip carries a different asset —
 `/tmp/extract-070/mypki-0.7.0/src/mypki/static/style.css`, **28,152 B**, sha256 `d4b7468bbaa3c8…` — 675 bytes smaller than
 this tree's asset, the difference having arrived with 0.7.1 rather than with any CSS edit made here (the file is already 28,827
 in this tree's baseline commit). An earlier draft of this file quoted **28,152** as "re-measured on this build" and asserted the
@@ -341,12 +345,13 @@ CSR carrying `BasicConstraints CA:TRUE` / `keyCertSign` / `crlSign` — the last
 with the issued ledger still empty.
 
 **In this build the reason is printed where the paste was typed.** Both refusals above re-render `/csr/sign` itself: a
-`<section class="form-errors refused">` block sits **above** `<label for="csr_pem">Paste a CSR (PEM)</label>`, and the pasted
+`<section class="form-errors refused">` block sits **above** `<label class="paste-label" for="csr_pem">Paste a CSR (PEM)</label>`, and the pasted
 text comes back in its own textarea so the fix is typed in place rather than re-pasted from a clipboard. The status did not
 move — 400 for garbage input, 403 for the privilege claim — and nothing was staged, which is what the fourth assertion checks
 (`This is what the request says` appears **zero** times). Asserted as an ORDER, because "the reason appears
 somewhere in the body" is also true of a page that mentions it only in a nav link: the harness compares **string
-offsets** (MEASURED on this build: the refused block at offset 2606, the label at 2957). Before this build both POSTs rendered `templates/error.html`, which
+offsets** (re-MEASURED on this 0.7.4 build: the refused block at offset 2606, the label at 2960; the earlier draft of this line recorded 2606/2957 on
+the 0.7.1 tree, and only the pair measured here describes this one). Before this build both POSTs rendered `templates/error.html`, which
 contains no form at all, so the operator had to click back and re-paste. The oversized paste of §8 is the refusal that stays
 on `error.html`: `SizeGuardMiddleware` answers it before any route runs, so there is no form to put the reason on.
 
@@ -427,7 +432,8 @@ cell (72 characters) with the full value in the `title=` attribute — truncatio
 There is **no revoke column** (0.2.0's per-row control moved into the checkbox column plus the one bulk button above the table) and,
 as of 0.4.0, **no Revoked column either**: 0.3.0 rendered a Status pill *and* a Revoked column saying almost the same thing about
 every row, and the pair could disagree if one was misread. The **Status cell** carries the whole decision now — the pill, then for a
-revoked row `revoked <YYYY-MM-DD HH:MM:SS>Z` and, when a reason was given, the reason under it.
+revoked row a `<span class="hint">` carrying only `<YYYY-MM-DD HH:MM:SS>Z` — **no leading word**, because 0.7.4 removed the duplicated
+"revoked" the pill beside it already states — and, when a reason was given, the reason under it.
 
 The Status column has **two states, not three**: `active` and `revoked`. A certificate past its not-after date still reports
 `active`, because this CA never revoked it; printing "expired" beside "revoked" would imply this host knows what every client
@@ -494,7 +500,8 @@ rows and one serial this host never signed (`deadbeefcafebabf`) — and a third 
   "fell by one" could never hold (MEASURED: it failed against a correct app as 1 -> 2);
 - at most **two** revoke forms on the confirmed page (one bulk + one confirmation);
 - the stamp survives a plain `GET /issued` afterwards (refresh, bookmark, another browser), and the **Status cell** reads as a dated
-  decision: the harness matches `class="hint">revoked YYYY-MM-DD` (**≥ 3**, one per stamped row) and separately asserts that
+  decision: the harness matches `class="hint">YYYY-MM-DD` (**≥ 3**, one per stamped row — as of 0.7.4 the stamp line carries no leading word, so
+  the shape pinned is the class plus the date prefix) and separately asserts that
   `<th scope="col">Revoked</th>` occurs **zero** times. As of 0.4.0 those two are one assertion pair — the stamp moved out of its own
   column into the same cell as the pill, and only the *shape* of the stamp line (`class="hint">` plus a `YYYY-MM-DD` prefix) is pinned,
   because pinning the whole line would make it about formatting rather than about whether the decision is still visible after a refresh.

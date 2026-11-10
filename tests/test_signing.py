@@ -426,7 +426,7 @@ def test_cdp_and_aia_point_at_the_configured_base() -> None:
     point = points[0]
     assert point.full_name is not None
     # `.value`, not `.uri`: cryptography 50 spells every GeneralName's payload as `value`.
-    assert [name.value for name in point.full_name] == [f"{CRL_BASE}/crl.pem"]
+    assert [name.value for name in point.full_name] == [f"{CRL_BASE}/revoke.crl"]
     # `reasons=None` and `crl_issuer=None`: the whole-CRL form. A scoped point would be a second claim this app does
     # not make, and §4 of the plan is explicit that no IssuingDistributionPoint accompanies it either.
     assert point.crl_issuer is None
@@ -464,7 +464,7 @@ def test_a_client_leaf_without_sans_still_carries_both_pointers(
     aia = _from_cert(issued.cert, x509.AuthorityInformationAccess)
 
     assert cdp is not None and aia is not None
-    assert [name.value for name in cdp[0].full_name] == [f"{CRL_BASE}/crl.pem"]  # type: ignore[index]
+    assert [name.value for name in cdp[0].full_name] == [f"{CRL_BASE}/revoke.crl"]  # type: ignore[index]
     assert aia[0].access_location.value == f"{CRL_BASE}/ocsp"  # type: ignore[attr-defined]
 
     critical = {

@@ -4,9 +4,9 @@
 <h1>The certificate revocation list</h1>
 
 <p class="lede">
-This host publishes one signed artifact: <code>{{ crl_base_url }}/crl.pem</code>. Certificates issued from 0.7.0 onward
+This host publishes one signed artifact: <code>{{ crl_base_url }}/revoke.crl</code>. Certificates issued from 0.7.4 onward
 carry that exact URL in their <code>CRLDistributionPoints</code>, so a client that knows how to fetch one can find this
-file without being told where it is. Everything below is the same bytes <code>GET /crl.pem</code> serves &mdash; read off
+file without being told where it is. Everything below is the same bytes <code>GET /revoke.crl</code> serves &mdash; read off
 the file on disk, not from what the last build remembered.
 </p>
 
@@ -33,7 +33,7 @@ the file on disk, not from what the last build remembered.
     </tr>
     <tr>
       <th scope="row">Advertised URL</th>
-      <td class="mono wrap">{{ crl_base_url }}/crl.pem</td>
+      <td class="mono wrap">{{ crl_base_url }}/revoke.crl</td>
     </tr>
     <tr>
       <th scope="row">OCSP responder</th>
@@ -52,7 +52,7 @@ the file on disk, not from what the last build remembered.
   <h3>The artifact (PEM)</h3>
   <pre class="pem" id="pem-crl">{{ crl_facts.pem }}</pre>
   <p class="copy-row">
-    <a class="button" href="/crl.pem">Download {{ 'mypki.crl.pem' }}</a>
+    <a class="button" href="/revoke.crl">Download {{ 'revoke.crl' }}</a>
     <button type="button" class="copy-pem" data-mypki-copy="pem-crl" data-mypki-label="The CRL">Copy to clipboard</button>
   </p>
   <p class="hint">Copying is the same bytes as the download. If the button reports a failure, this host is being served
@@ -86,7 +86,7 @@ the file on disk, not from what the last build remembered.
   <ol>
     <li>
       <strong>It carries no IssuingDistributionPoint, on purpose.</strong> An IDP scopes a CRL to a name or a subset of
-      certificates. Measured with openssl 3.5.6 against an IDP-scoped CRL (<code>full_name=http://mypki.my.lab/crl.pem</code>,
+      certificates. Measured with openssl 3.5.6 against an IDP-scoped CRL (<code>full_name=http://mypki.my.lab/revoke.crl</code>,
       <code>only_contains_user_certs=True</code>, critical), <code>openssl verify -crl_check</code> answers
       <code>error 44 at 0 depth lookup: different CRL scope</code> &mdash; for a perfectly valid leaf that carries no CDP
       at all, which is every certificate this CA issued before 0.7.0. The plain CRL above verifies <code>OK</code>. So the
@@ -97,7 +97,7 @@ the file on disk, not from what the last build remembered.
       <strong>Certificates issued before 0.7.0 carry no pointer.</strong> The CDP and AIA are added at signing time, so a
       leaf minted in 0.2.0&ndash;0.6.0 says nothing about this file and mypki cannot edit it afterwards. There is no
       migration and no re-issue. Those certificates can still be checked by handing the artifact to a client explicitly
-      (openssl: <code>-CRLfile mypki.crl.pem</code>).
+      (openssl: <code>-CRLfile revoke.crl</code>).
     </li>
     <li>
       <strong>openssl never fetches a CDP.</strong> Measured: with the CRL served live on a port and a leaf carrying the
@@ -155,7 +155,7 @@ the file on disk, not from what the last build remembered.
       this route is the single stated exception (page-map §0). A token proves that a page this host rendered to your
       browser submitted the form; an OCSP request is a machine-to-machine DER body from a client that has never seen this
       HTML and holds no cookie here. There is also no session state for a cross-site submit to abuse: the handler signs
-      what its own store already says about one serial &mdash; the same fact <code>GET /crl.pem</code> publishes. A
+      what its own store already says about one serial &mdash; the same fact <code>GET /revoke.crl</code> publishes. A
       form-shaped POST to this URL gets the five-byte refusal and changes no record, which is asserted in mypki's tests
       rather than promised on this page.
     </li>
@@ -164,9 +164,9 @@ the file on disk, not from what the last build remembered.
 
 <section class="card">
   <h2>How to check it yourself</h2>
-  <pre class="cmd">curl -sSf {{ crl_base_url }}/crl.pem -o mypki.crl.pem
-openssl crl -in mypki.crl.pem -noout -text          # read what it says
-openssl crl -in mypki.crl.pem -noout -CAfile mypki-root-ca.crt   # verify the signature</pre>
+  <pre class="cmd">curl -sSf {{ crl_base_url }}/revoke.crl -o revoke.crl
+openssl crl -in revoke.crl -noout -text          # read what it says
+openssl crl -in revoke.crl -noout -CAfile mypki-root-ca.crt   # verify the signature</pre>
   <p class="hint">
     The signature check is the point of this artifact: it is the first file mypki produces whose correctness a third party
     can confirm without trusting this host's word. If <code>-CAfile</code> reports <code>verify failure</code>, the file

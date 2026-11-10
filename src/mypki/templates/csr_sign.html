@@ -56,7 +56,13 @@ CSR requesting CA powers will be refused.
     {% if refused_hint %}<p class="hint">{{ refused_hint }}</p>{% endif %}
   </section>
   {% endif %}
-  <label for="csr_pem">Paste a CSR (PEM)</label>
+  {# 0.7.4 (operator brief): this label carries `.paste-label`, defined in `static/style.css` as `color: var(--blue)` — the
+     blue `/settings`, `/ca` and now `/inspect` already use for a section heading, so the box an operator is here to fill
+     reads as the field rather than as one more line of prose above it. The colour is on a **class**, not an inline
+     `style=` attribute: this app's CSP is `default-src 'self'` with no `'unsafe-inline'`, so a style written in markup is
+     dropped by the browser and only the weight would survive (page-map §0). Everything else about the label — weight,
+     block layout, margin — still comes from the generic `label` rule in that stylesheet. #}
+  <label class="paste-label" for="csr_pem">Paste a CSR (PEM)</label>
   <textarea id="csr_pem" name="csr_pem" rows="12" required spellcheck="false"
             placeholder="-----BEGIN CERTIFICATE REQUEST-----&#10;MIIC...&#10;-----END CERTIFICATE REQUEST-----">{{ paste_value }}</textarea>
   {% if paste_redacted %}

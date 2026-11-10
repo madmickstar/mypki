@@ -135,6 +135,7 @@ from .signing import CERT_PROFILE_HELP, CERT_TYPES, IssuedCert, issue_certificat
 from .store import MAX_REVOCATION_REASON_LENGTH, IssuedStore
 from .validators import (
     SanSet,
+    country_options,
     parse_sans,
     validate_common_name,
     validate_country,
@@ -183,14 +184,14 @@ CONSENT_FIELD = "ignore_extensions"
 _PEM_MEDIA_TYPE = "application/x-pem-file"
 
 #: Media type for the CRL artifact (RFC 5280 §7.1, IANA `application/pkix-crl`). Deliberately **not**
-#:`_PEM_MEDIA_TYPE`: this body is a CRL, and the client that fetched `<crl_base_url>/crl.pem` out of a certificate's
+#:`_PEM_MEDIA_TYPE`: this body is a CRL, and the client that fetched `<crl_base_url>/revoke.crl` out of a certificate's
 #: `CRLDistributionPoints` deserves to be told what it received rather than left to guess from a `.pem` suffix.
 _CRL_MEDIA_TYPE = "application/pkix-crl"
 
 #: The literal `Content-Disposition` filename for the artifact. Never `_safe_stem()` — there is no operator input here,
 #: and reaching for a filtering helper would imply that there is. It is also the name `paths.crl_path()` writes on disk,
 #: so the download name and the file name are one spelling (plan §4).
-CRL_FILENAME = "mypki.crl.pem"
+CRL_FILENAME = "revoke.crl"
 
 #: This file's *name* for where a refusal is rendered, as distinct from the status code it carries — the rule spelled
 #: out in the module docstring above. Living code cites `ERROR_SURFACE_RULE` instead of quoting that sentence, so
@@ -487,7 +488,7 @@ def create_app(
     app.state.ca = ca_bundle
 
     # Startup build (plan §4): a host with a CA **and a key** publishes a CRL before anyone revokes anything, so
-    # `GET /crl.pem` answers a valid zero-entry artifact instead of 404-ing until the first revoke. A keyless host is
+    # `GET /revoke.crl` answers a valid zero-entry artifact instead of 404-ing until the first revoke. A keyless host is
     # skipped rather than warned about on every start — `/ca` already says "absent — this host cannot sign", and
     # `crl.build_crl` refuses the same condition with a message that reaches an operator who actually asks for one.
     # A failure here never prevents serving: a CRL this host could not write is a degraded feature, not a broken app,
@@ -732,7 +733,7 @@ def _pem_response(body: str, filename: str, media_type: str = _PEM_MEDIA_TYPE) -
 def _ocsp_response(body: bytes) -> Response:
     """A DER OCSP response with the headers a protocol client needs, always at HTTP 200.
 
-    `no-store` here carries the same weight as on `/crl.pem` and more: an OCSP answer is a statement about whether a
+    `no-store` here carries the same weight as on `/revoke.crl` and more: an OCSP answer is a statement about whether a
     certificate is revoked **now**, and a proxy that replays a cached GOOD for four hours keeps a revoked certificate
     trusted for the length of that cache. The singleResponse's own `nextUpdate` (+4 h, `ocsp_responder.OCSP_LIFETIME`)
     tells a client how long the answer may be reused; this header is what stops an intermediary from deciding on its
@@ -754,7 +755,7 @@ def _ocsp_response(body: bytes) -> Response:
 def _published_crl(data_root: Path) -> CrlFacts | None:
     """Read the published CRL and report its facts, or answer None when this host has not written one.
 
-    Read from disk rather than from what the last build remembered, because `/crl` and `/crl.pem` must describe the
+    Read from disk rather than from what the last build remembered, because `/crl` and `/revoke.crl` must describe the
     **same** artifact: a page rendering what a variable said while the file said something else would be two answers to
     "what did this CA publish?" (page-map §1). The cost is one PEM parse per request, against an artifact written only
     at startup, after a stamping batch, and on an explicit Rebuild.
@@ -1895,6 +1896,14 @@ def _register_routes(app: FastAPI) -> None:
             "max_sans": settings_of().max_sans,
         }
         base.update(extra)
+        # The Country Code dropdown (0.7.4), built from whichever `values` this render actually fills in: the defaults
+        # on a first visit, what the operator typed on a rejected submit. Computed *after* `extra` for exactly that
+        # reason:
+        # a menu assembled from the defaults while the form shows typed values would prefill a country nobody asked for.
+        # Read from `validators.COUNTRY_NAMES`, the module that also owns `validate_country`, so the page's menu cannot
+        # offer what the validator would refuse, or refuse what the menu offers (§1). A value no listed code matches --
+        # `MYPKI_DEFAULT_COUNTRY=UK`, say -- arrives as its own row rather than rendering as some other country.
+        base["countries"] = country_options(str(base["values"].get("country", "")))
         return context(request, **base)
 
     @app.get("/csr/generate", response_class=HTMLResponse)
@@ -2381,8 +2390,8 @@ def _register_routes(app: FastAPI) -> None:
         are the difference between an operator who believes revocation works everywhere and one who knows where it does.
 
         The facts are read back **from the artifact on disk**, not from what the last build was told — so this page
-        cannot describe a CRL that is not the one `GET /crl.pem` serves. A host with no published file renders "nothing
-        published yet" rather than a 500: the route exists and is correct, this host just has not written the file
+        cannot describe a CRL that is not the one `GET /revoke.crl` serves. A host with no published file renders
+        "nothing published yet" rather than a 500: the route exists and is correct, this host just has not written it
         (page-map §6's posture for missing state).
         """
         issue_csrf_token(request)  # the page carries the Rebuild form
@@ -2401,12 +2410,12 @@ def _register_routes(app: FastAPI) -> None:
             ),
         )
 
-    @app.get("/crl.pem")
+    @app.get("/revoke.crl")
     def crl_artifact(request: Request) -> Response:
         """The published CRL itself, as PEM (page-map §14).
 
         The URL every certificate this host now issues carries in its `CRLDistributionPoints`
-        (`<crl_base_url>/crl.pem`), so this is the handler a client reaches without being told about it — hence the
+        (`<crl_base_url>/revoke.crl`), so this is the handler a client reaches without being told about it — hence the
         media type, which says what the body is instead of leaving a parser to infer it from a filename.
 
         No CSRF (it is a GET and publishes nothing new: every byte here is already on `/crl`), and no `Cache-Control`
@@ -2489,7 +2498,7 @@ def _register_routes(app: FastAPI) -> None:
             is about malformed abuse; the middleware's own limit stays where it is and `/ocsp` is not exempted from it.
           * unparseable body → MALFORMED_REQUEST (`ocsp_responder.parse_ocsp_request` folds every parse failure into
             None rather than raising, which is what keeps this branch one line).
-          * no CA, or a CA with no key → INTERNAL_ERROR. Not 503 like `/crl.pem`: the same reasoning as above, a client
+          * no CA, or a CA with no key → INTERNAL_ERROR. Not 503 like `/revoke.crl`: same reasoning as above, a client
             that cannot read HTML learns nothing, and `internalError` is the protocol's word for "this responder cannot
             answer". The log line names the fix (`mypki init-ca`).
           * a parsed request → GOOD / REVOKED / UNKNOWN from the record store.
@@ -2545,7 +2554,7 @@ def _register_routes(app: FastAPI) -> None:
         machine-to-machine protocol body sent by a TLS/HTTP client library that has never seen mypki's HTML and holds
         no cookie. Demanding a token here would break every real client while protecting nothing: there is no session
         state for a cross-site submit to abuse, and the handler signs *what its own store says about a serial*, which
-        is the same answer a GET of `/crl.pem` publishes.
+        is the same answer a GET of `/revoke.crl` publishes.
 
         It is also why this route is named in §12's standing-risk list rather than waved through: it is a signing oracle
         reachable over HTTP, one signature per request. What bounds it is that every signature states a fact drawn from
@@ -2553,7 +2562,7 @@ def _register_routes(app: FastAPI) -> None:
         8 KiB body cap above.
 
         The URL is what `signing.py` bakes into new leaves as the AIA OCSP access location
-        (`<crl_base_url>/ocsp`), so like `/crl.pem` it is a route a client reaches without being told about it.
+        (`<crl_base_url>/ocsp`), so like `/revoke.crl` it is a route a client reaches without being told about it.
         """
         return ocsp_der(body, request)
 

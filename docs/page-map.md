@@ -76,10 +76,10 @@ reason.
 | Field | Validation |
 | --- | --- |
 | `common_name` **required** | ≤253 chars, no control characters; if it looks like a DNS name each label ≤63 and RFC 1123 |
-| subject fields (`organization`, `organizational_unit`, `country`, `state`, `locality`, `email`) | prefilled from `MYPKI_DEFAULT_*` (§11) on a first visit and from what the operator typed on a rejected submit — the same `values=` shape both ways, so the template has exactly one way to fill an input and no path can ignore a knob |
+| subject fields (`organization`, `organizational_unit`, `country`, `state`, `locality`, `email`) | prefilled from `MYPKI_DEFAULT_*` (§11) on a first visit and from what the operator typed on a rejected submit — the same `values=` shape both ways, so the template has exactly one way to fill an input and no path can ignore a knob. As of 0.7.4 `country` is filled through a `<select>` rather than an `<input>`: the *value* rule is unchanged, only the control (see the dropdown note below) |
 | `sans` (textarea) | one entry per line or comma; classified DNS or IP; max `settings.max_sans` (100); dedupe preserving first-seen order |
 | `organization`, `organizational_unit`, `state`, `locality` | optional, printable, ≤128 |
-| `country` | exactly two letters A–Z after uppercasing |
+| `country` | exactly two letters A–Z after uppercasing. From 0.7.4 the form offers a menu of ISO 3166-1 alpha-2 codes; the menu is not the rule — `validate_country` still decides, and it refuses what arrives however it was chosen |
 | `email` | optional, one `@`, printable, ≤254 |
 | `key_type` | allow-list only: `rsa-2048`, `rsa-3072` (default), `rsa-4096`, `ec-p256`, `ec-p384` |
 | `passphrase`, `confirm` | optional pair. **Floor 8** (`csr.PASSPHRASE_MIN_LENGTH`) with a stated recommendation of 12 (`PASSPHRASE_RECOMMENDED_LENGTH`): 8–11 is accepted and an advisory says "12 or more is better", naming the length it saw and never the value. Must match when present; used **only** to encrypt the returned PEM |
@@ -91,6 +91,21 @@ styling rather than the `<fieldset>`/`<legend>` pair this page carried from 0.1.
 change, and they are what the validation reasons quote, so a refusal reads `country must be exactly two letters (got 'DEU')` beside a box labelled
 `Country Code (C)`: one label in two places is exactly the drift this document warns about, and these two are deliberately different words for the
 same field rather than two names for two things.
+
+**The Country Code menu (0.7.4).** `country` is now `<select id="country" name="country">`, its rows built by
+`validators.country_options()` from `validators.COUNTRY_NAMES` and handed to the page through `generate_context`. Two
+decisions here are deliberate departures from `/settings`' dropdowns (§12). The `<select>` **carries** `name="country"`, because
+there is no text box behind it and a menu that cannot post is decoration on a browser with JavaScript off; and it is not hidden
+by `.field-choice`'s progressive-enhancement rules, because here the menu *is* the field. The rows are `(code, label)` pairs —
+`AU — Australia` on screen, `AU` in the value posted — sorted by code so a browser's type-ahead finds the two letters an operator
+already knows, with a blank `— not set —` row first because `validate_country` accepts an empty country and a `<select>` with no
+empty option silently submits its first entry. The constant lives beside the validator that owns the rule rather than in the
+template, so the menu cannot offer what `validate_country` would refuse or refuse what it offers: picking an option is not a
+shortcut past validation. A value no listed code matches arrives as its own extra row rather than rendering as "Aland Islands":
+`MYPKI_DEFAULT_COUNTRY=UK` passes `validate_country` (two letters) while the list carries GB, and a rejected submit re-renders with
+what the operator typed (`DEU`). Either way the value stays visible and still fails on submit through the same validator; a
+three-letter default never gets that far, refused at startup by `config.Settings`. What reaches the certificate is only ever the two
+letters (`csr.subject_from_fields` writes `NameOID.COUNTRY_NAME`).
 
 Output shown **once**. Three capsule controls sit at the **top** of the result page (0.7.1): `Download CSR and Private Key` (one file, request first
 then key), `Copy CSR to clipboard` and `Copy Private Key to clipboard`. The two PEM blocks stay on the page below — a `<pre>` is the flow that works with
@@ -183,7 +198,7 @@ SAN edit, a bad country code. The staged request survives the round trip because
 
 **A refused paste comes back to this page, at its own status.** Garbage PEM, a signature that does not verify, a weak key and a
 CSR asking for CA powers are answered by `app._paste_refused`, which re-renders `csr_sign.html` with
-`<section class="form-errors refused">` above `<label for="csr_pem">Paste a CSR (PEM)</label>` and the paste itself still in the
+`<section class="form-errors refused">` above `<label class="paste-label" for="csr_pem">Paste a CSR (PEM)</label>` and the paste itself still in the
 textarea — run through `inspect.redact_private_key_bodies` first, so the armour lines survive and a private key's base64 does not,
 with the number of filtered blocks named on screen rather than left as a silent edit. **The status is unchanged** (400 for
 malformed input, 403 for `CaPrivilegeRequestedError`), and nothing is staged or signed: status answers *what was wrong* for a
@@ -247,8 +262,10 @@ enough to read, and a delete would make a valid certificate look never-issued.
 
 **There is no Revoke column, and as of 0.4.0 no Revoked column either** (`templates/issued.html`). 0.2.0 added a Revoked column
 beside Status; the two said almost the same thing about every row and could disagree if one was misread. The Status cell now carries
-the whole decision: `pill active|revoked`, then — for a revoked row only — `<span class="hint">revoked <UTC> YYYY-MM-DD HH:MM:SSZ</span>`
-and, when a reason was given, the reason under it. The e2e harness scrapes `class="hint">revoked YYYY-MM-DD` out of that cell, so
+the whole decision: `pill active|revoked`, then — for a revoked row only — `<span class="hint"><UTC> YYYY-MM-DD HH:MM:SSZ</span>`
+and, when a reason was given, the reason under it. As of 0.7.4 the stamp line carries no leading word: the pill beside it already
+reads `revoked` on exactly those rows and on those rows only, so writing the word twice in one cell said it twice (the same reasoning
+0.4.0 gives for the deleted column). The e2e harness scrapes `class="hint">YYYY-MM-DD` out of that cell, so
 the *shape* of the stamp line is a contract even though its column is gone, and it also asserts that
 `<th scope="col">Revoked</th>` occurs **zero** times.
 
@@ -276,7 +293,7 @@ a blank serial answers 400. There is no delete, and `IssuedStore` carries exactl
 is asserted by introspection in `tests/test_store.py`.
 
 **What revoking does from 0.7.0, and what it still does not do.** A stamp is no longer only a row: `_stamp_revocations` re-signs
-`<data>/crl/mypki.crl.pem` (§14) whenever a batch actually stamped something, and from then on the OCSP responder (§15) answers
+`<data>/crl/revoke.crl` (§14) whenever a batch actually stamped something, and from then on the OCSP responder (§15) answers
 REVOKED for that serial. A batch that stamped nothing re-signs nothing — "already revoked" must not buy a fresh CRL Number. What has
 **not** changed is the client side, and `templates/issued.html` says so both next to the confirmation and in the table footer:
 *Revoking stamps the row and re-signs the published CRL, which answers OCSP too — but only clients that consult either will ever see
@@ -349,17 +366,17 @@ a request is the *extensions* below; the public key comes only from the request.
 | Signature hash | SHA-256 (SHA-384 when the leaf key is P-384) | same | same | — |
 | Issuer | exactly the CA subject | same | same | — |
 
-| CRLDistributionPoints | `<crl_base_url>/crl.pem` — one `DistributionPoint`, `full_name` only (`relative_name`, `reasons`, `crl_issuer` all `None`) | same | same | **no** |
+| CRLDistributionPoints | `<crl_base_url>/revoke.crl` — one `DistributionPoint`, `full_name` only (`relative_name`, `reasons`, `crl_issuer` all `None`) | same | same | **no** |
 | AuthorityInformationAccess | one `AccessDescription`: OCSP at `<crl_base_url>/ocsp` | same | same | **no** |
 
 Never on a leaf: `CA:TRUE`, `keyCertSign`, `crlSign`, NameConstraints, CertificatePolicies.
 
 **What changed in 0.7.0.** The sentence above used to name `CRLDistributionPoints` and `AuthorityInfoAccess` as things a leaf never carries;
 from 0.7.0 both **do** — added by `signing.leaf_extensions()` itself, non-critical, spelled from the one configured base (`crl_base_url`,
-§11), so `…/crl.pem` and `…/ocsp` have exactly one spelling each and both are routes this app actually registers. What has **not** changed is
+§11), so `…/revoke.crl` and `…/ocsp` have exactly one spelling each and both are routes this app actually registers. What has **not** changed is
 "extensions are never copied from the CSR": a request carrying its own distribution point is still classified ignorable (§3 rule 6),
 still dropped, still named on the confirmation panel and again on the issued page — the CA adds its own pointer rather than obeying the
-applicant's (`tests/test_consent.py` asserts `urls == ["http://mypki.my.lab/crl.pem"]` against a request that asked for
+applicant's (`tests/test_consent.py` asserts `urls == ["http://mypki.my.lab/revoke.crl"]` against a request that asked for
 `http://crl.internal/crl.der`, and `tests/test_csr_validate.py` keeps `CRLDistributionPoints` in the ignorable table with its name
 asserted verbatim). Both extensions land only on certificates issued **from 0.7.0 onward**: no migration, no re-issue (§14).
 
@@ -381,9 +398,9 @@ Precedence `--data-dir` > `MYPKI_DATA_DIR` (or `.env`) > OS default.
 <data>/ca/ca_key.pem        # never served, never logged, never in the DB, mode 0600 on POSIX
 <data>/ca/ca_cert.pem       # the only certificate served
 <data>/ca/archive/<UTC-ts>/ # pairs archived by --force; nothing is ever deleted
-<data>/crl/mypki.crl.pem   # 0.7.0: the published CRL, rebuilt rather than appended. One fixed name
-                           # (`paths.crl_path`), ordinary permissions (0644 umask-respecting) because
-                           # `GET /crl.pem` serves it to anyone — see §14, not PRIVATE_FILE_MODE
+<data>/crl/revoke.crl       # 0.7.0: the published CRL, rebuilt rather than appended. One fixed name
+                            # (`paths.crl_path`), ordinary permissions (0644 umask-respecting) because
+                            # `GET /revoke.crl` serves it to anyone — see §14, not PRIVATE_FILE_MODE
 <data>/instance/secret_key  # SessionMiddleware secret, mode 0600 on POSIX
 <data>/issued.db            # SQLite WAL: issued_certs(serial_hex, cert_type, common_name, sans_json,
                             #   not_before_utc, not_after_utc, issued_at_utc, fingerprint_sha256,
@@ -459,12 +476,12 @@ caveated product decision rather than a discovered fact. If a client refuses a l
 what it exists for. Over-ceiling submissions are refused naming the limit, never clamped.
 
 `crl_base_url = "http://mypki.my.lab"` (0.7.0) is the only knob revocation gets, and it is deliberately a **base**: the paths are spelled
-by `app.py` (`/crl.pem`, `/ocsp`), so the URL baked into a certificate cannot disagree with the route that serves it. Plain `str`, not
+by `app.py` (`/revoke.crl`, `/ocsp`), so the URL baked into a certificate cannot disagree with the route that serves it. Plain `str`, not
 `… | None`: there is always a value, which is what makes `/settings` refuse an empty box naming this knob (`_empty_means_default`) instead
 of silently reverting — and why no "unset means no CDP" branch exists anywhere in the app. A `field_validator(…, mode="before")` refuses a
 value that does not start with `http://` or `https://` **at startup**, because this string is copied into every certificate issued afterwards:
 `mypki.my.lab` without a scheme would be encoded faithfully, read back correctly on `/settings`, and fail at a client whose error
-never mentions this knob. Trailing slashes are stripped rather than rejected (`http://host//crl.pem` is legal to encode and broken to fetch,
+never mentions this knob. Trailing slashes are stripped rather than rejected (`http://host//revoke.crl` is legal to encode and broken to fetch,
 and invisible on the page). It sits in `SETTINGS_SECTIONS` under *Serving* beside `public_base_url`, and it is **live** — not one of
 `STARTUP_ONLY_KNOBS` — because it is read at build and issue time. Live is not retroactive: the change reaches only certificates issued
 after it, which the knob's own rendered description says.
@@ -615,7 +632,7 @@ step, **required by no page**: copy-to-clipboard for PEM blocks — its success 
 0.4.0, while its failure line stays verbose on purpose — the select-all box and live count on `/issued`, and a revoke confirmation
 modal whose Confirm adds `confirm=1` to the same form the server-rendered confirmation block represents). 0.4.0 adds two more
 enhancements, both degrading to the server-rendered control when scripting is off: `wireChoice`, which keeps a preset dropdown in step
-with the authoritative number box (`select[data-mypki-select-for]`, and **no `name=` on any `<select>`** — only the input posts, so a
+with the authoritative number box (`select[data-mypki-select-for]`, and **no `name=` on any `/settings` `<select>`** — only the input posts, so a
 dropdown can never submit a value the server has not bounds-checked), and `wireCheckboxState`, which recolours the *on*/*off* word
 beside `MYPKI_LOG_TO_CONSOLE`. Served
 from the `StaticFiles` mount registered **last** so it cannot shadow a page route, and reached through `url_for('static', …)`
@@ -626,7 +643,10 @@ wiring `app.js` has carried since 0.3.0. Two stylesheet rules are new — `.pend
 above) and `.findings`/`.finding`, which reuse the palette's existing `--amber` rather than introducing a colour or borrowing
 `.form-errors`. **0.5.2 adds no JavaScript either, and again no colour — only width**: `form.inspect-form { max-width: none; }` and
 `#pem_paste { width: 100%; max-width: none; }`, scoped to `/inspect` by a class that exists for no other purpose (§13). No selector is shared with
-`/settings` or with the CSR forms, which is the point of scoping it that way. The nav is **seven links** (`base.html`: Sign CSR · Generate CSR · CA certificate · Issued · About · Inspect PEM ·
+`/settings` or with the CSR forms, which is the point of scoping it that way. **0.7.4 adds one rule, no script and no colour:**
+`.paste-label { color: var(--blue); }`, reusing the blue `.section-heading`, links and `.select-count` already use (§3). It exists as a
+class because this app ships no inline styles at all — the CSP below would drop a `style=` written in markup — and it is carried by exactly
+one element in the whole app. The nav is **seven links** (`base.html`: Sign CSR · Generate CSR · CA certificate · Issued · About · Inspect PEM ·
 Settings, still plain markup) and `tests/test_nav.py` now asserts that list, its measured order, and exactly one lit item per page — a
 fact nothing asserted before a seventh link existed.
 
@@ -703,7 +723,7 @@ would not issue for this key, but it is reported here as it stands*; Ed25519's h
 issue named in their own row; *this request asks to be a CA — `mypki` signs end-entity certificates only, so `/csr/sign` would refuse it*; and
 *signature does not verify — the request was tampered with or truncated while pasting*.
 
-**What the page says about itself, in four sentences at the top.** *It does not verify a chain* — no trust store on this host and no issuer
+**What the page says about itself, in four sentences — below the paste box as of 0.7.4, above it before that.** *It does not verify a chain* — no trust store on this host and no issuer
 certificate to check against, so it can name an issuer but cannot say anybody trusts it, and the only CA-shaped fact available is the one inside
 the document. *It does not know about revocation* — from 0.7.0 this host **has** a published CRL (§14) and an OCSP responder (§15), but `describe_pem`
 consults neither, has no trust store and cannot reach any other CA's artifacts, so a certificate reported valid here may have been revoked by
@@ -711,6 +731,14 @@ whoever issued it; `/issued`'s Status column has the same limit.
  *Its findings are not gates*. *A private key is named and
 not opened*. SMOKE_TESTING §15 asserts all four sentences still appear on the rendered page, because a reader who assumed otherwise would be
 misled by a page that looks like a verifier.
+
+**Where that card sits (0.7.4).** The four sentences are a `<section class="card settings-section">` preceded by a blue
+`<h2 class="section-heading">Paste PEM</h2>` — the heading-plus-card pair `/settings`, `/ca` and `/csr/generate` already use (§12) —
+and they now sit **below** the form rather than above it. The order is the point: this page has exactly one control, and until 0.7.4
+the first thing an operator met was four sentences about what the page cannot do, before the box they came to fill. The four sentences
+themselves are unchanged word for word, which is why §13's per-sentence harness counts still hold; only their position moved. Nothing in
+this build asserts the order as an offset — no test compares a card offset against the textarea on `/inspect` — so what pins the move is
+the wording of this paragraph and the card's own Jinja comment, not a gate.
 
 **Private keys are named, never opened.** `redact_private_key_bodies(paste)` returns the paste with each key **body** replaced by
 `KEY_BODY_REDACTED`, plus a count; the armour lines stay, so the operator can see *which* block was redacted. Recognition is by armour only
@@ -754,16 +782,16 @@ unfindable: `base.html` decides which item is `.active` by comparing `request.ur
 
 ---
 
-## §14 CRL — `GET /crl` (page) + `GET /crl.pem` (artifact) + `POST /crl/rebuild` (`crl.py`, 0.7.0)
+## §14 CRL — `GET /crl` (page) + `GET /revoke.crl` (artifact) + `POST /crl/rebuild` (`crl.py`, 0.7.0)
 
-**One artifact, one name, rebuilt rather than appended.** `<data>/crl/mypki.crl.pem` is the only revocation file this host writes
+**One artifact, one name, rebuilt rather than appended.** `<data>/crl/revoke.crl` is the only revocation file this host writes
 (`paths.crl_dir()` / `paths.crl_path()`, §8). One fixed filename on purpose: the URL certificates carry is spelled by `app.py` from
 `crl_base_url` (§11), and a name an operator could configure would be a second spelling of one location. Rebuilt, never appended — a
 CRL is a signed statement about a set, not a journal.
 
 A **page** as well as an artifact because the honest limits of a home-lab CRL need somewhere to be written down, and `/crl` is where
 they are: four measured caveats (§below) plus the `id-kp-OCSPSigning` paragraph §15 shares. `/crl` reads its facts **from the file on
-disk** (`_published_crl` → `crl.read_crl_pem` → `summarise_crl`), so it cannot describe a CRL that `GET /crl.pem` does not serve —
+disk** (`_published_crl` → `crl.read_crl_pem` → `summarise_crl`), so it cannot describe a CRL that `GET /revoke.crl` does not serve —
 the same "one implementation instead of two that drift" rule §1 states for the home page.
 
 ### The artifact's shape (what `crl.py` decides, and nothing else)
@@ -781,7 +809,7 @@ the same "one implementation instead of two that drift" rule §1 states for the 
 
 **No `IssuingDistributionPoint`, and no `DeltaCRLIndicator`.** The reason is measured, not stylistic, and it is written on `/crl` in
 openssl's own words so nobody re-adds one "for completeness": against a CRL carrying
-`IDP(full_name=http://mypki.my.lab/crl.pem, only_contains_user_certs=True, critical)`, `openssl verify -crl_check` answers
+`IDP(full_name=http://mypki.my.lab/revoke.crl, only_contains_user_certs=True, critical)`, `openssl verify -crl_check` answers
 **`error 44 at 0 depth lookup: different CRL scope`** (rc=2) for a **perfectly valid leaf that carries no CDP at all** — i.e. every
 certificate this CA issued before 0.7.0, plus anything minted elsewhere against it. The plain CRL verifies `OK` (rc=0). An IDP would make
 `-crl_check` unusable on this CA's own history. Both absences are asserted in `tests/test_crl.py`, so they are checked facts rather than
@@ -802,8 +830,8 @@ protect nothing and break a fetch proxy running as its own account.
 
 | Route | Shape |
 | --- | --- |
-| `GET /crl` | HTML: facts card (issuer, thisUpdate, nextUpdate, stated freshness, CRLNumber, entry count, the advertised URL and the OCSP base), the copyable PEM block (`id="pem-crl"`, same pattern as §4's CA block), *Download mypki.crl.pem*, the Rebuild form, and the four caveats. No published file → a notice naming `startup CRL build failed`, not a 500. |
-| `GET /crl.pem` | The artifact: `application/pkix-crl` (RFC 5280 §7.1 — deliberately **not** `application/x-pem-file`: whoever fetched `<base>/crl.pem` out of a certificate deserves to be told what arrived), `no-store`, `nosniff`, `Content-Disposition: attachment; filename="mypki.crl.pem"` (literal, never `_safe_stem` — there is no operator input to filter). No CSRF: it is a GET and publishes nothing new. |
+| `GET /crl` | HTML: facts card (issuer, thisUpdate, nextUpdate, stated freshness, CRLNumber, entry count, the advertised URL and the OCSP base), the copyable PEM block (`id="pem-crl"`, same pattern as §4's CA block), *Download revoke.crl*, the Rebuild form, and the four caveats. No published file → a notice naming `startup CRL build failed`, not a 500. |
+| `GET /revoke.crl` | The artifact: `application/pkix-crl` (RFC 5280 §7.1 — deliberately **not** `application/x-pem-file`: whoever fetched `<base>/revoke.crl` out of a certificate deserves to be told what arrived), `no-store`, `nosniff`, `Content-Disposition: attachment; filename="revoke.crl"` (literal, never `_safe_stem` — there is no operator input to filter). No CSRF: it is a GET and publishes nothing new. |
 | `POST /crl/rebuild` | `require_csrf` as the handler's **first statement**, then re-sign, then render `/crl` at 200 with `rebuilt=1` rather than a 303: this app has no flash store, and a redirect would either re-sign a second time or render the same card without saying it had moved. The page says in the same breath as the button that **a rebuild is a re-sign of the same data** — nothing here revokes anything — because "Rebuild" on a revocation page reads to a nervous operator like "make my revocations take effect". A refused token costs no signature and no bytes (`tests/test_crl.py` compares the file byte-for-byte). |
 
 ### The four caveats `/crl` states, in order
@@ -811,7 +839,7 @@ protect nothing and break a fetch proxy running as its own account.
 1. **No IDP, on purpose** — `error 44 … different CRL scope`, as measured above.
 2. **Certificates issued before 0.7.0 carry no pointer.** The CDP is added at signing time; a leaf minted in 0.2.0–0.6.0 says nothing about
    this file and mypki cannot edit it afterwards. No migration, no re-issue (answer 6). Those certificates are still checkable by handing the
-   artifact to a client explicitly (`openssl verify -crl_check … -CRLfile mypki.crl.pem`).
+   artifact to a client explicitly (`openssl verify -crl_check … -CRLfile revoke.crl`).
 3. **openssl never fetches a CDP.** Measured: with the CRL served live on a port and a leaf carrying exactly the right URL,
    `openssl verify -crl_check` answered **`error 3 at 0 depth lookup: unable to get certificate CRL`** (rc=2) and no GET appeared in this
    server's access log. A baked pointer exists for clients that *do* fetch (browsers, Go, curl-based tooling). For openssl you pass
@@ -830,7 +858,7 @@ protect nothing and break a fetch proxy running as its own account.
 and a client library reads that field, not the status line. So `/ocsp` answers **HTTP 200 + DER** for a malformed request
 (`30 03 0a 01 01`, MALFORMED_REQUEST) and for a host that cannot sign one (`30 03 0a 01 02`, INTERNAL_ERROR), each exactly 5 bytes. mypki's
 house rule — every rejection gets mypki's own HTML page (§0) — is deliberately suspended here: HTML where a client expects DER is
-indistinguishable from a broken responder. `/crl.pem` answers 503 for the same missing state and the difference is a decision rather than an
+indistinguishable from a broken responder. `/revoke.crl` answers 503 for the same missing state and the difference is a decision rather than an
 inconsistency — whoever fetches a CRL is a human's tool that benefits from mypki's hint, while an OCSP client is a library that can read only
 DER.
 
@@ -838,7 +866,7 @@ DER.
 does not. A CSRF defence protects a session by requiring a token that only a page this host rendered could carry; an OCSP request is a
 machine-to-machine DER body from a client that has never seen mypki's HTML and holds no cookie. Demanding a token would break every real
 client while protecting nothing: there is no session state for a cross-site submit to abuse, and the handler signs **what its own store says
-about a serial** — the same fact `GET /crl.pem` publishes. What makes that defensible rather than a hole is asserted in `tests/test_ocsp.py`:
+about a serial** — the same fact `GET /revoke.crl` publishes. What makes that defensible rather than a hole is asserted in `tests/test_ocsp.py`:
 a form-shaped POST (`serial_hex=…&confirm=1`) gets the 5-byte DER refusal and leaves `store.count()` unchanged, and an oversized body mints no
 signature at all.
 
@@ -913,5 +941,5 @@ than better — and the store lookup plus an RSA-3072 signature is milliseconds 
 exposure is stated instead of being half-mitigated by something nobody measured.
 
 **Why DER, when mypki emits PEM everywhere else:** because the client at this URL is a library following RFC 6960 §4.1, not a human pasting a
-block into a form. `/crl.pem` stays PEM-only (§14) and there is deliberately no `/crl.der`: two DER spellings of one artifact would be the
+block into a form. `/revoke.crl` stays PEM-only (§14) and there is deliberately no `/crl.der`: two DER spellings of one artifact would be the
 drift case §1 exists to prevent.

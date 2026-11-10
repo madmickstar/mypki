@@ -71,7 +71,22 @@
     <div class="grid">
       <div class="field"><label for="organization">Organisation (O)</label><input id="organization" name="organization" maxlength="128" value="{{ values.get('organization', '') }}"></div>
       <div class="field"><label for="organizational_unit">Organisation Unit (OU)</label><input id="organizational_unit" name="organizational_unit" maxlength="128" value="{{ values.get('organizational_unit', '') }}"></div>
-      <div class="field"><label for="country">Country Code (C)</label><input id="country" name="country" maxlength="2" size="3" value="{{ values.get('country', '') }}" placeholder="AU"></div>
+      {# 0.7.4 (operator brief): Country Code is a dropdown of ISO 3166-1 alpha-2 codes — `AU — Australia` on screen,
+         the two letters in the value it posts. Two deliberate departures from /settings' Issuing-limits dropdowns (§12):
+         this <select> **carries** name="country", because there is no text box behind it and a menu that cannot post is
+         decoration on a browser with JavaScript off; and it is not hidden by `.field-choice`'s progressive-enhancement
+         rules, because here the menu *is* the field. The rows come from `validators.COUNTRY_NAMES` via
+         `generate_context`, so the page's menu and `validate_country` are one definition rather than two that can drift —
+         picking an option is not a shortcut past validation, and a `MYPKI_DEFAULT_COUNTRY` no listed code matches arrives
+         as its own row instead of silently rendering as "Aland Islands". #}
+      <div class="field">
+        <label for="country">Country Code (C)</label>
+        <select id="country" name="country">
+          {% for code, label in countries %}
+          <option value="{{ code }}"{% if values.get('country', '') | upper == code %} selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
       <div class="field"><label for="state">State (S)</label><input id="state" name="state" maxlength="128" value="{{ values.get('state', '') }}"></div>
       <div class="field"><label for="locality">Location (L)</label><input id="locality" name="locality" maxlength="128" value="{{ values.get('locality', '') }}"></div>
       <div class="field"><label for="email">Email (E)</label><input id="email" name="email" type="email" maxlength="254" value="{{ values.get('email', '') }}"></div>

@@ -240,7 +240,7 @@ def test_a_stamped_row_offers_no_checkbox_and_the_reason_shows_in_its_status_cel
     assert f'<input type="checkbox" name="serial_hex" value="{SERIAL_TWO}"' in listing.text
     assert '<span class="pill revoked">revoked</span>' in listing.text
     assert "wrong SANs" in listing.text
-    assert re.search(r'<span class="hint">revoked \d{4}-\d{2}-\d{2}', listing.text)
+    assert re.search(r'<span class="hint">\d{4}-\d{2}-\d{2}', listing.text)
 
 
 # --------------------------------------------------------------------------- a batch that mixes all three outcomes

@@ -58,9 +58,10 @@ ARMOUR_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
 #: is the page this file should worry about most: its whole purpose is to echo back whatever an operator pasted, and its
 #: private-key branch therefore names a key without ever loading or rendering it (see `mypki.inspect`).
 #:
-#: `/crl` and `/crl.pem` joined in 0.7.0 for the reason every artifact does: this is now a host that signs things, and a
-#: signed artifact is exactly what a careless implementation would build out of the signing bundle. Both are listed here
-#: so the ordinary loop searches them like any other body — `/crl.pem` in particular is the only entry that is not HTML,
+#: `/crl` and `/revoke.crl` joined in 0.7.0 for the reason every artifact does: this is now a host that signs things,
+#: and a signed artifact is exactly what a careless implementation would build out of the signing bundle. Both are
+#: listed here so the ordinary loop searches them like any other body — `/revoke.crl` in particular is the only entry
+#: that is not HTML,
 #: so its bytes are searched as text rather than through a template's rendering (the dedicated test below adds the
 #: armour-free claim on the artifact itself).
 PAGES = (
@@ -74,7 +75,7 @@ PAGES = (
     "/settings",
     "/version",
     "/crl",
-    "/crl.pem",
+    "/revoke.crl",
 )
 
 #: The exact 5-byte DER refusal `/ocsp` answers for a body it cannot parse (MEASURED; the same literal `test_ocsp.py`
@@ -538,10 +539,10 @@ def test_the_published_crl_is_armour_free_and_carries_only_public_bytes(session_
       `AuthorityKeyIdentifier.from_issuer_public_key(...)`, i.e. a digest of the **public** key;
     * the signature verifies against that public key, and a second GET answers byte-identically.
     """
-    response = session_client.get("/crl.pem")
+    response = session_client.get("/revoke.crl")
     assert response.status_code == 200
 
-    assert ARMOUR_RE.search(response.text) is None, "/crl.pem carries private-key armour"
+    assert ARMOUR_RE.search(response.text) is None, "/revoke.crl carries private-key armour"
     # The CRL's own marker is the only BEGIN line that may appear; anything else is a key or a certificate smuggled in.
     assert CRL_PEM_MARKER in response.text
     assert response.text.count("-----BEGIN") == 1
@@ -553,7 +554,7 @@ def test_the_published_crl_is_armour_free_and_carries_only_public_bytes(session_
 
     # Verification against the public key is the proof that rendering this artifact needed nothing private.
     assert crl.is_signature_valid(ca_bundle.cert.public_key())
-    assert response.content == session_client.get("/crl.pem").content
+    assert response.content == session_client.get("/revoke.crl").content
 
 
 def test_the_session_cookie_carries_ids_not_material(session_client, settings: Settings, sample_csr_pem: str) -> None:

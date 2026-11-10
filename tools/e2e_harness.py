@@ -1052,7 +1052,7 @@ def section_7(app: Harness) -> None:
         f"the refusal is rendered on the sign page itself ({len(blocks)} block(s), not a separate error document)",
         len(blocks) >= 1,
     ):
-        label = body.find('<label for="csr_pem">Paste a CSR (PEM)</label>')
+        label = body.find('<label class="paste-label" for="csr_pem">Paste a CSR (PEM)</label>')
         app.check(
             f"the refusal sits above 'Paste a CSR (PEM)' (offset {blocks[0]} before {label})",
             label != -1 and blocks[0] < label,
@@ -1492,10 +1492,10 @@ def section_11(app: Harness) -> None:
         after_body,
         f'name="serial_hex" value="{row_serial}"',
     )
-    dated = count_re(after_body, r'class="hint">revoked [0-9]{4}-[0-9]{2}-[0-9]{2}')
+    dated = count_re(after_body, r'class="hint">[0-9]{4}-[0-9]{2}-[0-9]{2}')
     # Only the SHAPE of the stamp line is pinned (class="hint"> plus a YYYY-MM-DD prefix): pinning the whole line would
     # make this about formatting rather than about whether the decision is still visible after a refresh.
-    app.check(f"the Status cell reads as a dated decision ('revoked YYYY-MM-DD…', {dated})", dated >= 3)
+    app.check(f"the Status cell reads as a dated decision (a hint span opening 'YYYY-MM-DD…', {dated})", dated >= 3)
     app.count_zero(
         "the list has no separate Revoked column any more (the stamp lives in the Status cell)",
         after_body,
@@ -1556,34 +1556,34 @@ def section_11_crl(app: Harness, stamped_serials: list[str]) -> None:
         1,
     )
 
-    download = app.get("/crl.pem")
+    download = app.get("/revoke.crl")
     if not app.expect_status(
-        "GET /crl.pem (the URL certificates issued from 0.7.0 carry in their CRLDistributionPoints)", download, 200
+        "GET /revoke.crl (the URL certificates issued from 0.7.4 carry in their CRLDistributionPoints)", download, 200
     ):
         return
     headers = {key.lower(): value for key, value in download.headers.items()}
     app.check(
-        "/crl.pem declares application/pkix-crl, so a client need not guess from the filename",
+        "/revoke.crl declares application/pkix-crl, so a client need not guess from the filename",
         headers.get("content-type") == "application/pkix-crl",
     )
     app.check(
-        "/crl.pem is an attachment named mypki.crl.pem",
-        headers.get("content-disposition") == 'attachment; filename="mypki.crl.pem"',
+        "/revoke.crl is an attachment named revoke.crl",
+        headers.get("content-disposition") == 'attachment; filename="revoke.crl"',
     )
     app.check(
-        "/crl.pem is not cacheable (a proxy replaying a 24 h-old CRL keeps a revoked certificate trusted for the"
+        "/revoke.crl is not cacheable (a proxy replaying a 24 h-old CRL keeps a revoked certificate trusted for the"
         " length of that cache)",
         headers.get("cache-control") == "no-store",
     )
     pem_body = download.text
     app.count_exactly("the download contains exactly one armour block", pem_body, "-----BEGIN X509 CRL-----", 1)
-    app.write_fixture("crl.pem", pem_body)
+    app.write_fixture("revoke.crl", pem_body)
     app.state["crl_pem"] = pem_body
 
     try:
         crl = x509.load_pem_x509_crl(pem_body.encode())
     except Exception as exc:
-        app.check(f"/crl.pem's body could not be parsed as a CRL: {exc}", False)
+        app.check(f"/revoke.crl's body could not be parsed as a CRL: {exc}", False)
         return
     app.check(
         f"the decoded artifact is a real CRL of {len(crl)} entries, matching the page's number", len(crl) == reported

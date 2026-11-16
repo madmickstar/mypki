@@ -171,6 +171,22 @@ jobs:
       - name: Version chain (module -> manifest -> CHANGELOG)
         run: make version
 
+      # Name the refs the verdict is about to be made on. This job's conclusion depends entirely on what checkout managed
+      # to fetch, and "the tag is lightweight" has two very different causes: the repository really holds a plain ref, or
+      # the runner never received the tag object. They send an operator to opposite places — GitHub's Release form versus
+      # this workflow file — and the log used to offer no way to tell them apart.
+      # Measured here to settle which is which: a full fetch of `+refs/tags/*:refs/tags/*`, exactly what `fetch-depth: 0`
+      # above performs, preserves an annotated tag's object type (`for-each-ref` answers `tag`, and `--require-tag` then
+      # exits 0). So this step printing `commit` means the remote itself is lightweight — not a checkout artifact.
+      # `%(objectname)` versus `%(*objectname)` is the same distinction from the other side: for a tag object both appear,
+      # the second being the commit it peels to; for a lightweight ref only the first exists.
+      - name: What checkout fetched (diagnostic)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          echo "triggering ref: ${{ github.ref }}"
+          git for-each-ref --format='  %(refname) -> objecttype=%(objecttype) object=%(objectname:short) peeled=%(*objectname:short)' refs/tags/
+          echo "HEAD: $(git rev-parse HEAD)"
+
       # `--require-tag` only on a tag ref. MEASURED on this project's own tree: check_version.py exits **2** ("cannot
       # check") when the version line exists but no release ref can be consulted, and 2 is explicitly not a pass — so
       # running the tag link on an ordinary branch commit would fail every push to main for a reason that has nothing to

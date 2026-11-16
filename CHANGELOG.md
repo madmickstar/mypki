@@ -127,6 +127,15 @@ Two findings from the first push to GitHub, both reproduced here before being fi
   them. Both require runner v2.327.1+, which GitHub-hosted runners already exceed; noted in the workflow for whoever adds
   a self-hosted runner later. Verified by parsing the file before and after: jobs, matrix, triggers, permissions,
   concurrency, conditionals and every `run:` line are identical, and only the eight `uses:` refs moved.
+- **The Version chain job now names the refs it is about to judge.** A `drift: tag v0.7.4 is a lightweight tag` verdict has
+  two causes that send an operator to opposite places — the repository really holds a plain ref (GitHub's Release form makes
+  one when you type a new tag name), or the runner never received the tag object. The log offered no way to tell them apart.
+  Settled by measurement rather than argument: a full fetch of `+refs/tags/*:refs/tags/*`, which is what this job's own
+  `fetch-depth: 0` performs, preserves the object type — in a simulated runner tree `for-each-ref` answered `tag` and
+  `--require-tag` exited 0. So a printed `commit` can only mean the remote is lightweight. The new step runs only on tag refs
+  and prints `%(objecttype)` plus `%(*objectname)`, the peeled commit, which is the same distinction read from the other
+  side. Verified by parsing the workflow before and after: every job, step count elsewhere, matrix, triggers, permissions
+  and all existing `run:` lines identical; one step added to `version`.
 - **`AGENTS.md` and `SMOKE_TESTING.md` shipped inside the release zip.** Omitting them from the sdist's `include` had been
   the recorded decision, and it was half of one: `make zip` stages its artifact from `git ls-files`, so any tracked path
   rides into the zip whatever `include` says. Both documents answer "how do I work **on** this repository", not "how do I

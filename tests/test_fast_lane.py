@@ -30,6 +30,7 @@ failing lane takes; it asserts which commands were attempted.
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -475,6 +476,15 @@ def test_the_lane_flushes_its_own_lines_so_a_merged_log_reads_in_order(tmp_path:
     Spawned as a subprocess with both streams merged into one file, because that buffering is a property of real
     streams: an in-process `capsys` capture cannot reproduce it. `fast_lane.run` is replaced inside the child so
     no gate runs, and `monkeypatch` is deliberately absent: patching this process would not change the child's.
+
+    The child's stream *encoding* is pinned to UTF-8, which is not cosmetic. MEASURED on the first GitHub push, on
+    `pytest (3.13 / windows-latest)`: a redirected child writes bytes in the host ANSI codepage, where the em dash in
+    `interpreter_note()`'s line is `0x97`, and this test then reads the log back as UTF-8 —
+    `UnicodeDecodeError: 'utf-8' codec can't decode byte 0x97 in position 70`. Reproduced here without a Windows host by
+    running the same child with `PYTHONIOENCODING=cp1252`. The assertion is about the ORDER lines arrive in, so the
+    capture's encoding is fixed rather than inherited from whatever codepage the runner happens to have. It is pinned in
+    the test and not in `tools/fast_lane.py`: forcing UTF-8 on the product would make redirected logs machine-readable
+    while garbling them on an interactive legacy-codepage console, which is the worse trade.
     """
     script = (
         "import sys; sys.path.insert(0, 'tools'); import fast_lane\n"
@@ -489,6 +499,7 @@ def test_the_lane_flushes_its_own_lines_so_a_merged_log_reads_in_order(tmp_path:
             stdout=handle,
             stderr=subprocess.STDOUT,
             check=False,
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         )
 
     assert completed.returncode == 1

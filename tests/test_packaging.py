@@ -35,6 +35,7 @@ import os
 import re
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 
 import pytest
@@ -873,27 +874,95 @@ def test_python_dash_m_is_a_working_route_to_the_cli(tmp_path: Path) -> None:
     assert list(tmp_path.iterdir()) == [], f"--version created files: {list(tmp_path.iterdir())}"
 
 
+def _console_script_candidates() -> list[Path]:
+    """Every place an installed console script can legitimately live, most authoritative first.
+
+    MEASURED on the first GitHub push, on `pytest (3.13 / windows-latest)`: the single-path version of this lookup
+    failed with *"the editable install produced no console script at
+    C:\\hostedtoolcache\\windows\\Python\\3.13.17\\x64\\mypki.exe"* because pip writes scripts to
+    `<prefix>\\Scripts\\` on Windows while `Path(sys.executable).parent` is `<prefix>` — the directory holding
+    `python.exe`, not the one holding executables pip installs. On Linux the two are the same directory
+    (`<prefix>/bin`), which is exactly why the assumption survived every release made before a Windows runner existed.
+
+    `sysconfig.get_path("scripts")` asks the question actually meant — "where does THIS interpreter install
+    executables" — and answers correctly on both platforms and inside a venv (verified here: it reports `.venv/bin`).
+    The parent-of-interpreter guess is kept as a second candidate rather than deleted, because a venv built by some
+    tools runs tests through a shim interpreter whose scripts sit beside it; a lookup that tries both cannot be wrong
+    about a layout it has not seen.
+
+    The assembly is split into `_console_script_paths`, which takes the two directories and the platform as arguments,
+    precisely so the Windows layout above can be asserted on a Linux host instead of being argued from memory.
+    """
+    try:
+        scripts_dir: Path | None = Path(sysconfig.get_path("scripts"))
+    except (KeyError, OSError):  # A stdlib scheme with no scripts directory at all (no observed case; refuse to crash).
+        scripts_dir = None
+    return _console_script_paths(scripts_dir, Path(sys.executable).parent, windows=os.name == "nt")
+
+
+def _console_script_paths(scripts_dir: Path | None, interpreter_dir: Path, *, windows: bool) -> list[Path]:
+    """The script paths to try, most authoritative first, de-duplicated and without touching the filesystem.
+
+    Pure by construction: given the same two directories and the same platform flag it returns the same list on any
+    OS, which is what lets `test_the_console_script_lookup_covers_the_windows_layout` reproduce a windows-latest
+    prefix here.
+    """
+    directories = [d for d in (scripts_dir, interpreter_dir) if d is not None]
+    names = ("mypki.exe", "mypki") if windows else ("mypki",)
+
+    candidates: list[Path] = []
+    for directory in directories:
+        for name in names:
+            candidate = directory / name
+            if candidate not in candidates:
+                candidates.append(candidate)
+    return candidates
+
+
 def test_the_console_script_route_reports_the_same_version(tmp_path: Path) -> None:
     """`docs/linux_install.md`'s quick start (`mypki init-ca`, `mypki serve`) resolves to the same CLI as
     `python -m mypki`.
 
     `[project.scripts] mypki = "mypki.cli:main"` is a claim about the built artifact, and this is the only test that
-    checks it by running the thing. The script is looked up next to `sys.executable` because that is where pip puts it
-    for the interpreter running this suite — and on Windows the same entry becomes `mypki.exe`, so the name is chosen
-    by `os.name` rather than assumed (STYLE §12). Asserting `is_file()` before running it is deliberate: a missing
-    script should fail as "the install produced no console script", not as an OSError from `subprocess.run`.
+    checks it by running the thing. Where to look for the installed script is answered by
+    `_console_script_candidates()` — see there for the Windows finding that made a single path the wrong answer — and
+    the name itself is chosen by `os.name` rather than assumed, because the same entry point becomes `mypki.exe` on
+    Windows (STYLE §12). Asserting `is_file()` before running it stays deliberate: a missing script should fail as
+    "the install produced no console script", not as an OSError from `subprocess.run`.
 
     Both routes are asserted against the imported `__version__` rather than a literal, so a release bump cannot leave a
     stale expectation here (the same rule `tools/e2e_harness.py` and `tools/check_version.py` follow).
     """
-    script_name = "mypki.exe" if os.name == "nt" else "mypki"
-    script = Path(sys.executable).parent / script_name
-    assert script.is_file(), f"the editable install produced no console script at {script}"
+    candidates = _console_script_candidates()
+    script = next((candidate for candidate in candidates if candidate.is_file()), None)
+    tried = ", ".join(str(candidate) for candidate in candidates)
+    assert script is not None, f"the editable install produced no console script; tried {tried}"
 
     completed = _spawn_cli([str(script), "--version"], tmp_path)
 
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == f"mypki {__version__}"
+
+
+def test_the_console_script_lookup_covers_the_windows_layout() -> None:
+    """The windows-latest failure is pinned as a case, not left to be rediscovered on the next release.
+
+    Both spellings are asserted together because each half fails differently: drop the `Scripts` directory and the
+    assertion reproduces the original CI error, while dropping the `.exe` name finds a directory that exists but no
+    script in it. On Linux the two candidate directories collapse to one, so a test written only against this host's
+    layout cannot see either mistake — which is how the single-path lookup stayed green for eight releases.
+    """
+    prefix = Path("C:/hostedtoolcache/windows/Python/3.13.17/x64")
+    candidates = _console_script_paths(prefix / "Scripts", prefix, windows=True)
+
+    assert candidates[0] == prefix / "Scripts" / "mypki.exe", candidates
+    assert prefix / "Scripts" / "mypki.exe" in candidates, "the directory pip actually writes to is not searched"
+    assert prefix / "mypki.exe" in candidates, "the pre-0.7.4 assumption was wrong, but it stays a fallback"
+
+    posix_dir = Path("/home/op/.venv/bin")
+    assert _console_script_paths(posix_dir, posix_dir, windows=False) == [posix_dir / "mypki"], (
+        "a POSIX venv must yield exactly one path, or the de-duplication this relies on has moved"
+    )
 
 
 def test_a_named_rule_is_cited_by_name_and_not_quoted_again() -> None:

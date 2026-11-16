@@ -95,6 +95,26 @@ Two findings from the first push to GitHub, both reproduced here before being fi
   coverage 7.16.2 on the same 3.10 venv while 4.7.0 and 7.17.3 were available) — only a *direct* floor above the supported
   range defeats that, and `httpx2` was the only direct requirement with one. Verified green end to end on 3.10.22:
   **831 passed**, 96.6% coverage, with starlette backing off to 1.7.0 as declared.
+- **Two assertions were POSIX-only in disguise, and the first `windows-latest` run found both.** Neither is a defect in
+  the product: 821 tests passed on Windows while exactly these two failed, and each failure was a test asking a question
+  in one platform's spelling.
+  *The console-script lookup.* `tests/test_packaging.py` built the script path as `Path(sys.executable).parent / "mypki.exe"`
+  and asserted it existed. pip writes console scripts to `<prefix>\Scripts\`, while `sys.executable`'s parent is
+  `<prefix>` — the directory holding `python.exe`. On Linux those two are the same directory (`<prefix>/bin`), which is why
+  the assumption survived eight releases made before a Windows runner existed. The lookup now asks
+  `sysconfig.get_path("scripts")` — the question actually meant, correct on both platforms and inside a venv — and keeps
+  the old guess as a second candidate. The assembly is split into a pure `_console_script_paths()`, so
+  `test_the_console_script_lookup_covers_the_windows_layout` reproduces a `C:/hostedtoolcache/windows/Python/3.13.17/x64`
+  prefix on any host instead of leaving the claim to a runner.
+  *The merged-log encoding.* `tools/fast_lane.py` prints an em dash, and a child whose stdout is redirected on Windows
+  writes bytes in the host ANSI codepage, where `—` is `0x97`; the test then read the log back as UTF-8 and died with
+  `UnicodeDecodeError: 'utf-8' codec can't decode byte 0x97 in position 70`. The assertion is about the ORDER lines arrive
+  in, so the capture's encoding is now pinned (`PYTHONIOENCODING=utf-8` for that child) rather than inherited from whatever
+  codepage the runner has. Pinned in the test and deliberately not in `fast_lane.py`: forcing UTF-8 on the product would
+  make redirected logs machine-readable while garbling them on an interactive legacy-codepage console. Reproduced here
+  without a Windows host by running the child under `cp1252` — the committed version fails at byte `0x97`, the patched one
+  passes — and then the whole suite was run again with the ambient codepage forced to `cp1252`: **832 passed**, so no
+  sibling of this bug is left hiding in the tests.
 - **`AGENTS.md` and `SMOKE_TESTING.md` shipped inside the release zip.** Omitting them from the sdist's `include` had been
   the recorded decision, and it was half of one: `make zip` stages its artifact from `git ls-files`, so any tracked path
   rides into the zip whatever `include` says. Both documents answer "how do I work **on** this repository", not "how do I

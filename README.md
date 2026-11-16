@@ -92,7 +92,7 @@ How those files are protected — POSIX modes that are asserted after the write,
 Windows, and what protects the key instead — is stated in full in
 [docs/REFERENCE.md](docs/REFERENCE.md#key-protection-and-the-data-directory).
 
-The tree this repository actually ships, taken from `git ls-files --cached --exclude-standard --others` at this commit (78 paths):
+The tree this repository actually ships, taken from `git ls-files --cached --exclude-standard --others` at this commit (76 paths):
 
 ```
 mypki/
@@ -179,12 +179,10 @@ mypki/
 ├── .env.example
 ├── .gitignore
 ├── .pre-commit-config.yaml
-├── AGENTS.md
 ├── CHANGELOG.md
 ├── LICENSE
 ├── Makefile
 ├── README.md
-├── SMOKE_TESTING.md
 └── pyproject.toml
 ```
 

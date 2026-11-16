@@ -54,6 +54,19 @@ dependencies = [
 # deprecated fallback). TestClient is how tests/conftest.py drives the five pages, so omitting this from `dev` means
 # `pip install -e ".[dev]" && pytest` aborts at collection on a fresh checkout -- the same class of failure that made
 # the reference project ship `tools/` in its sdist (pyproject note above). A stated divergence, not an oversight.
+#
+# Why `httpx2` carries two markers instead of one floor. This is the bug that broke CI's first run on GitHub, measured
+# before and after the fix: `httpx2` dropped Python 3.10 in its own 2.15.0 release (`requires_python: >=3.11` on 2.15.0,
+# 2.16.0 and every later file), so a bare `httpx2>=2.16` asks pip for a wheel that cannot exist on 3.10 and both
+# `pytest (3.10 / ubuntu-latest)` and `pytest (3.10 / windows-latest)` die in the install step -- before a single test
+# runs. Reproduced on CPython 3.10.22 with the unmarked line: `error: No solution found when resolving dependencies`
+# / `because the current Python version (3.10.22) does not satisfy Python>=3.11 and httpx2==2.16.0 depends on
+# Python>=3.11`. Every other dev dependency needed no such treatment because the resolver backs off on its own
+# (MEASURED on the same 3.10 venv: it chose pre-commit 4.6.2 and coverage 7.16.2, the last versions that support 3.10,
+# even though 4.7.0 and 7.17.3 are newer); only a *direct* floor above the supported range defeats that, and `httpx2`
+# was the only one. An upper bound is therefore part of the fix, not decoration: `>=2.14,<2.15` names the newest 3.10
+# line, and starlette backs off to 1.7.0 there for the same declared-support reason -- a combination verified green
+# end to end (831 passed, 96.6% coverage) rather than assumed from metadata.
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
@@ -61,7 +74,8 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.9",
     "pre-commit>=4",
-    "httpx2>=2.16",
+    "httpx2>=2.16; python_version >= '3.11'",
+    "httpx2>=2.14,<2.15; python_version < '3.11'",
 ]
 
 [project.scripts]

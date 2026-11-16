@@ -95,5 +95,22 @@ issued.db-*
 *.csr
 *.p12
 
+# ---------------------------------------------------------------- working documents
+# `docs/working/` holds the two documents that answer "how do I work **on** this repository" rather than "how do I run
+# what I installed": `AGENTS.md` (the editing rules a session here must follow) and `SMOKE_TESTING.md` (the manual
+# walkthrough, §1-§16, that `tools/e2e_harness.py` automates). They were tracked until the first GitHub push, where they
+# arrived as part of the release zip built from `git ls-files` — which is exactly what a tracked file does: every path
+# committed is a path packaged. The distinction the repository had been drawing was only "not in the sdist", asserted in
+# tests/test_packaging.py::test_working_rule_documents_are_deliberately_not_in_the_artifact, and that distinction does not
+# survive a zip made from the git file list.
+#
+# Ignoring them keeps them on disk for whoever edits this tree and off GitHub for everyone else. Two consequences are
+# recorded rather than discovered later: a fresh clone has no `docs/working/` at all, so nothing in `src/`, `tests/` or
+# `tools/` may read those files at runtime (MEASURED by grep — the surviving references are prose citations in comments,
+# docstrings and CHANGELOG entries, plus `tools/doc_citations.py`, which reports an absent document instead of failing);
+# and `docs/REFERENCE.md` no longer links to `../SMOKE_TESTING.md`, because a link that resolves only on one machine is
+# worse than the sentence it replaced.
+docs/working/
+
 # scratch output from ad-hoc background runs (never a product artifact)
 nohup.out

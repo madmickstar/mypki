@@ -79,10 +79,14 @@ FORBIDDEN_PATTERNS = [
 #: those two configs is invisible to a test that only checks "the exclude list is non-empty".
 REQUIRED_EXCLUDES = {"scripts", "logs", "*.pem", "*.key", "*.crt"}
 
-#: The documents this repository keeps for whoever works on it rather than for whoever installs it. They are tracked,
-#: linted and cited by code, and they are not in `include` — a decision asserted below so it reads as a decision and not
-#: as an omission someone could "fix" by adding one line to one of the two lists.
-WORKING_RULES_DOCUMENTS = ["AGENTS.md", "SMOKE_TESTING.md"]
+#: The documents this repository keeps for whoever works on it rather than for whoever installs it. They were tracked
+#: until the first GitHub push exposed the difference between two meanings of "not shipped": `include` keeps a file out
+#: of the sdist and the wheel, while `make zip` builds its manifest from `git ls-files` — so a tracked file rides into
+#: the release zip whatever `include` says about it. They now live under `WORKING_DIR`, which `.gitignore` names, and
+#: three separate places have to agree about that: untracked, ignored, and absent from `include`. Any two can hold while
+#: the third does not, so all three are asserted below rather than the one that happened to break.
+WORKING_DIR = "docs/working"
+WORKING_RULES_DOCUMENTS = [f"{WORKING_DIR}/AGENTS.md", f"{WORKING_DIR}/SMOKE_TESTING.md"]
 
 #: The flags that answer "which paths would a commit from this tree contain", spelled out here rather than imported from
 #: tools/tree_manifest.py. Restating it is deliberate: the README assertions below are meant as an independent second
@@ -695,31 +699,83 @@ def test_the_readme_denominator_sees_a_file_plain_ls_files_does_not(tmp_path: Pa
         assert not any(pattern.search(path) for pattern in FORBIDDEN_PATTERNS), f"{path} would be forbidden if shipped"
 
 
+def _git_ignores(relative: str) -> bool:
+    """Whether git's own rules hide `relative`.
+
+    Read as a return code rather than through `_git_paths`, because here a non-zero exit **is** the answer to the
+    question rather than a broken git call: `check-ignore --quiet` exits 0 when something ignores the path and 1 when
+    nothing does, and raising on the 1 would report "this file is not ignored" as though git had failed.
+    """
+    completed = subprocess.run(
+        ["git", "check-ignore", "--quiet", relative],
+        cwd=str(BUILD_ROOT),
+        check=False,
+    )
+    return completed.returncode == 0
+
+
+def _link_target(document: str, target: str) -> str:
+    """The repository-relative path a markdown link inside `document` points at, resolved without touching a filesystem.
+
+    Hand-rolled instead of `os.path.normpath` for one reason: the matrix leg that matters runs on Windows, where
+    `normpath` rewrites `/` to `\\` and a path git reports as `deploy/mypki.service` stops matching anything. Splitting
+    on `/` keeps the comparison in the one spelling git always uses, on every OS.
+    """
+    parts: list[str] = []
+    for component in [*document.split("/")[:-1], *[piece for piece in target.split("/") if piece]]:
+        if component == ".":
+            continue
+        if component == "..":
+            if not parts:
+                return ""  # The link leaves the repository; no tracked path can satisfy it.
+            parts.pop()
+            continue
+        parts.append(component)
+    return "/".join(parts)
+
+
 def test_working_rule_documents_are_deliberately_not_in_the_artifact() -> None:
-    """`AGENTS.md` and `SMOKE_TESTING.md` are tracked, gated and cited — and not shipped. That is a decision on purpose.
+    """`AGENTS.md` and `SMOKE_TESTING.md` are neither shipped nor tracked — and every place that claim lives is checked.
 
     The user-facing question this file answers is what a person who untars a release can do with it. Both of these
     documents answer "how do I work **on** this repository": measured costs of one 2-CPU box, shell constraints of this
-    container, how to run the harness. Neither helps an installed package run, and `include` is asserted equal to
-    `REQUIRED_INCLUDES` in both directions, so shipping them would mean editing two lists in lockstep for no gain to the
-    user — while omitting them silently is exactly the one-sided edit that pairing exists to catch. Naming them here is
-    what turns the omission into a recorded decision.
+    container, the §1-§16 manual walkthrough. Neither helps an installed package run.
+
+    What changed after the first GitHub push is the number of places the decision has to hold. Omitting them from
+    `include` was never sufficient on its own, because `make zip` stages its tree from `git ls-files`: tracking a
+    working document ships it, full stop. And dropping them from the index alone would have been equally fragile in the
+    other direction — an untracked-but-not-ignored file is one `git add .` away from returning. So the three assertions
+    below are the whole decision, and a fresh CI checkout (which has no `docs/working/` at all) is precisely why none of
+    them asks whether the files exist on disk.
     """
     sdist_body = _table_body(PYPROJECT.read_text(encoding="utf-8"), "tool.hatch.build.targets.sdist")
     include = set(_array_entries(sdist_body, "include"))
+    tracked = set(_git_paths(["ls-files"]))
 
     for document in WORKING_RULES_DOCUMENTS:
-        assert (BUILD_ROOT / document).is_file(), f"{document} is asserted absent from the artifact but is not tracked"
         assert document not in include, f"{document} joined the sdist without this file being told about it"
         assert document not in REQUIRED_INCLUDES, f"{document} is in one of the two lists but not the other"
+        assert document not in tracked, (
+            f"{document} is tracked again, so `make zip` puts it in every release artifact regardless of `include`"
+        )
+        assert _git_ignores(document), f"{document} is untracked but not ignored, so `git add .` would re-commit it"
 
-    # The asymmetry that makes the decision worth recording: docs/REFERENCE.md *is* shipped and links to
-    # ../SMOKE_TESTING.md, so an artifact reader can follow a link out of the artifact. Recorded here rather than
-    # papered over, so whoever ships SMOKE_TESTING.md one day edits both lists in the same commit.
+    # The invariant the move creates, and the one thing that would otherwise rot quietly: a document that ships may not
+    # link to a path the repository does not track. On GitHub that link 404s, and in an unpacked artifact it dead-ends
+    # at a file only one machine has. docs/REFERENCE.md carried three links to ../SMOKE_TESTING.md that were honest
+    # while the file was tracked and became false the moment it was not — the class of drift this loop exists to catch
+    # before someone else reads the rendered page and finds it.
     assert "docs/REFERENCE.md" in include
-    reference = (BUILD_ROOT / "docs" / "REFERENCE.md").read_text(encoding="utf-8")
-    if "../SMOKE_TESTING.md" in reference:
-        assert "SMOKE_TESTING.md" not in include, "SMOKE_TESTING.md is both linked from a shipped doc and shipped"
+    markdown_link = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+    for document in sorted(entry for entry in include if entry.endswith(".md")):
+        path = BUILD_ROOT / document
+        if not path.is_file():
+            continue
+        for target in markdown_link.findall(path.read_text(encoding="utf-8")):
+            if target.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            relative = _link_target(document, target.split("#")[0])
+            assert relative in tracked, f"{document} links to {target!r}, which resolves to {relative!r}: not tracked"
 
 
 def test_no_key_material_exists_anywhere_the_include_entries_walk() -> None:

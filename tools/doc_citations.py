@@ -64,8 +64,12 @@ DOC_ALIASES: dict[str, str] = {
     "docs/REFERENCE.md": "docs/REFERENCE.md",
     "REFERENCE.md": "docs/REFERENCE.md",
     "docs/linux_install.md": "docs/linux_install.md",
-    "SMOKE_TESTING.md": "SMOKE_TESTING.md",
-    "SMOKE_TESTING": "SMOKE_TESTING.md",
+    # The walkthrough moved out of git and into `docs/working/` (see .gitignore): a release zip is built from
+    # `git ls-files`, so the only way to keep a maintainer's document out of the artifact is to stop tracking it.
+    # Aliases follow the file, not the citation spelling — code still writes `SMOKE_TESTING.md §9`, and on the machine
+    # that holds the document that reference resolves rather than landing in `missing_documents`.
+    "SMOKE_TESTING.md": "docs/working/SMOKE_TESTING.md",
+    "SMOKE_TESTING": "docs/working/SMOKE_TESTING.md",
     "page-map": "docs/page-map.md",
     "page-map.md": "docs/page-map.md",
 }

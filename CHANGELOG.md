@@ -80,6 +80,32 @@ release that does not exist.
   assertion and `tools/e2e_harness.py`'s offset comparison both now search for the label *with its class*, so the order
   assertion still proves "the refusal sits above the box it is about" against a page whose label markup changed.
 
+### Fixed
+
+Two findings from the first push to GitHub, both reproduced here before being fixed rather than inferred from a CI log.
+
+- **`pip install -e ".[dev]"` could not resolve on Python 3.10, so four of the eight matrix legs died before running a
+  test.** The cause is a floor that asks for a wheel no 3.10 interpreter can install: `httpx2` dropped 3.10 in its own
+  2.15.0 release (`requires_python: >=3.11` on 2.15.0, 2.16.0 and everything since), and `dev` demanded `httpx2>=2.16`.
+  Reproduced on CPython 3.10.22 — `error: No solution found when resolving dependencies: because the current Python
+  version (3.10.22) does not satisfy Python>=3.11 and httpx2==2.16.0 depends on Python>=3.11`. Fixed by splitting the one
+  requirement across the boundary (`>=2.16` on 3.11+, `>=2.14,<2.15` below it) instead of raising `requires-python`,
+  because the project's stated floor is 3.10 and nothing in `src/` uses a 3.11-only feature. Every other dev dependency
+  needed no such help: the resolver backs off on its own when a package declares support (it chose pre-commit 4.6.2 and
+  coverage 7.16.2 on the same 3.10 venv while 4.7.0 and 7.17.3 were available) — only a *direct* floor above the supported
+  range defeats that, and `httpx2` was the only direct requirement with one. Verified green end to end on 3.10.22:
+  **831 passed**, 96.6% coverage, with starlette backing off to 1.7.0 as declared.
+- **`AGENTS.md` and `SMOKE_TESTING.md` shipped inside the release zip.** Omitting them from the sdist's `include` had been
+  the recorded decision, and it was half of one: `make zip` stages its artifact from `git ls-files`, so any tracked path
+  rides into the zip whatever `include` says. Both documents answer "how do I work **on** this repository", not "how do I
+  run what I installed", so they moved to `docs/working/` and `.gitignore` now names that directory. Three places have to
+  agree about the decision and `tests/test_packaging.py` asserts all three — absent from `include`, absent from
+  `git ls-files`, matched by an ignore rule — because any two hold while the third does not. Nothing reads either file at
+  runtime (checked by grep across `src/`, `tests/` and `tools/`: the surviving references are prose citations), so a fresh
+  clone without `docs/working/` runs the suite unchanged; `tools/doc_citations.py`'s aliases follow the new path, and
+  `docs/REFERENCE.md`'s three links to `../SMOKE_TESTING.md` became plain text, since a link that resolves on one machine
+  404s on GitHub. README's generated tree block re-rendered at **76 paths** (from 78) by `make ready`.
+
 ### Testing
 
 - **Counts re-measured on this tree, not inherited.** `pytest --collect-only` answers **831 tests**, and the same command run in a

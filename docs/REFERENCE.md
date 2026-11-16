@@ -46,7 +46,8 @@ Exit 3 is **only** the missing-CA case. A port that is already held prints
 were indistinguishable: uvicorn swallowed the bind error and exited 3 on its own.)
 
 `tools/e2e_harness.py` uses the same family: 0 passed · 1 at least one FAIL · 2 **nothing was checked** — never read as
-a pass ([../SMOKE_TESTING.md](../SMOKE_TESTING.md)).
+a pass. The walkthrough that spells this out lives at `docs/working/SMOKE_TESTING.md`: a maintainer's document, ignored by
+git and therefore absent from a fresh clone (see *Testing* below).
 
 ---
 
@@ -277,10 +278,14 @@ version chain; the Windows leg is what proves the path handling and that no Open
 
 A harness run's totals and per-section counts are written by the harness itself into `reports/harness-ledger.json` (gitignored)
 rather than being retyped into a document, because a copied measurement goes stale on the first unrelated change and nobody can
-tell. Nothing in-tree quotes it; [../SMOKE_TESTING.md](../SMOKE_TESTING.md)'s *Reading the result* says how to read it.
+tell. Nothing in-tree quotes it; the walkthrough's *Reading the result* section says how to read it.
 
-Manual walkthrough: [../SMOKE_TESTING.md](../SMOKE_TESTING.md), automated by
+Manual walkthrough: `docs/working/SMOKE_TESTING.md` (§1–§16), automated by
 `tools/e2e_harness.py` (`make e2e`, and the last step of `make gate`; tracked in git, not part of the installed package).
+The walkthrough itself is not tracked: `.gitignore` names `docs/working/`, because a release zip is built from
+`git ls-files` and every tracked path therefore ships in it whatever the sdist's `include` list says. Ask a maintainer for
+a copy if you need the manual steps; everything CI can prove about these sixteen sections it proves by running the
+harness.
 
 ---
 

@@ -20,15 +20,38 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Action versions: `actions/checkout@v5` and `actions/setup-python@v6`.
+#
+# The first GitHub run printed a deprecation warning on every job — "Node.js 20 is deprecated … forced to run on Node.js
+# 24: actions/checkout@v4, actions/setup-python@v5". A warning, not a failure: the jobs still ran and still reported real
+# results, which is exactly why it is worth clearing rather than learning to skim past it. A log whose known noise is
+# ignored is a log where the *next* warning is also ignored, and the whole reason this workflow exists is that a green CI
+# must be readable to be trusted.
+#
+# Chosen by reading each tag's own manifest rather than by bumping to "latest": checkout v4 declares `using: node20` while
+# v5/v6/v7 declare `node24`; setup-python v5 declares `node20` while v6/v7 declare `node24`. So v5/v6 are the first majors
+# that stop asking for a runtime GitHub now overrides — the smallest change that silences it, in the same spirit as
+# `permissions: contents: read` above.
+#
+# Why not the newest majors. checkout v7 adds a behavior change (it refuses to check out fork PRs under
+# `pull_request_target` / `workflow_run`) and an ESM migration; setup-python v7 removes the `pip-install` input. Neither
+# affects this file today — no `pull_request_target`, no `pip-install` — but adopting them would be taking on changes this
+# project has no demand for, and every input actually used here (`fetch-depth`, `python-version`, `cache`,
+# `cache-dependency-path`) is present in v5/v6, checked against the two `action.yml` files directly.
+#
+# One caveat carried forward: both majors require runner v2.327.1 or newer. GitHub-hosted runners (`ubuntu-latest`, the
+# `windows-latest` legs below) are always at or past that, so nothing to do here — but a self-hosted runner added later
+# must be updated first, or these steps fail before any test runs.
+
 jobs:
   # ------------------------------------------------------------------ lint
   ruff:
     name: Ruff (lint + format)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -58,9 +81,9 @@ jobs:
     name: mypy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -92,9 +115,9 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -130,14 +153,14 @@ jobs:
     name: Version chain
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # fetch-depth: 0 — actions/checkout does NOT fetch tags by default, and this job's whole subject is refs/tags.
           # Without this, `--require-tag` would report "no annotated tag v0.1.0 exists" on a run that was triggered *by*
           # the tag v0.1.0: a false drift accusation against the one ref that proves the chain.
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 

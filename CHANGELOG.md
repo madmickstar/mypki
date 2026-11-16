@@ -115,6 +115,18 @@ Two findings from the first push to GitHub, both reproduced here before being fi
   without a Windows host by running the child under `cp1252` — the committed version fails at byte `0x97`, the patched one
   passes — and then the whole suite was run again with the ambient codepage forced to `cp1252`: **832 passed**, so no
   sibling of this bug is left hiding in the tests.
+- **Every job printed a Node.js 20 deprecation warning.** `actions/checkout@v4` and `actions/setup-python@v5` declare
+  `using: node20`, and GitHub now forces them onto Node 24 while saying so on each run. Not a failure — the legs still ran
+  and still reported real results — which is precisely why it was worth clearing: a log whose known noise is skimmed past is
+  a log where the next warning is also skimmed past. Bumped to `checkout@v5` and `setup-python@v6`, chosen as the first
+  majors that stop asking for an overridden runtime rather than the newest ones: read from each tag's own `action.yml`,
+  checkout v5/v6/v7 and setup-python v6/v7 all declare `node24`, and every input used here (`fetch-depth`,
+  `python-version`, `cache`, `cache-dependency-path`) exists in v5/v6. The newer majors were left alone on purpose —
+  checkout v7 refuses fork-PR checkouts under `pull_request_target`/`workflow_run` and setup-python v7 drops the
+  `pip-install` input, neither of which this workflow uses, so adopting them would import changes with no demand behind
+  them. Both require runner v2.327.1+, which GitHub-hosted runners already exceed; noted in the workflow for whoever adds
+  a self-hosted runner later. Verified by parsing the file before and after: jobs, matrix, triggers, permissions,
+  concurrency, conditionals and every `run:` line are identical, and only the eight `uses:` refs moved.
 - **`AGENTS.md` and `SMOKE_TESTING.md` shipped inside the release zip.** Omitting them from the sdist's `include` had been
   the recorded decision, and it was half of one: `make zip` stages its artifact from `git ls-files`, so any tracked path
   rides into the zip whatever `include` says. Both documents answer "how do I work **on** this repository", not "how do I

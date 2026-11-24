@@ -16,7 +16,9 @@ service unit and lands in a web-served tree for anyone who runs `mypki serve` fr
 is already resolved per OS by `paths.resolve_config_dir`, is outside every served directory, and is already documented
 as "where an operator's `.env` copy belongs" (page-map §8).
 
-The format is plain `KEY=VALUE` lines with the `MYPKI_` prefix, i.e. exactly the spelling `config.py` documents. An
+The format is plain `KEY=VALUE` lines with the `MYPKI_` prefix, i.e. exactly the spelling `config.py` documents. A value
+may also be wrapped in double (or single) quotes, as `.env.example` now writes every value: reading drops the quotes and
+decodes escapes the way dotenv does, and a line this page does not manage is written back exactly as found. An
 operator can open it in a text editor, and the same line works in a shell or a systemd unit — one spelling for one knob,
 which is the rule the whole config layer already follows (page-map §11).
 
@@ -48,6 +50,7 @@ What this module refuses to do
 
 from __future__ import annotations
 
+import codecs
 import logging
 import os
 import re
@@ -82,6 +85,19 @@ _UNMANAGED_REASONS: dict[str, str] = {
 
 #: A dotenv line this module can read and write back unchanged: `KEY=value`, optionally preceded by `export `.
 _LINE_RE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$")
+
+#: A whole value wrapped in one pair of double (or single) quotes, optionally followed by a trailing `# comment`. The
+#: body may hold backslash escapes, which is why it is `(?:[^"\\]|\\.)*` and not `[^"]*`: a value written as
+#: `"Lab \"One\""` has to end at the *last* quote, not the first.
+_DOUBLE_QUOTED_RE = re.compile(r'^"((?:[^"\\]|\\.)*)"\s*(?:#.*)?$')
+_SINGLE_QUOTED_RE = re.compile(r"^'((?:[^'\\]|\\.)*)'\s*(?:#.*)?$")
+
+#: The escapes `python-dotenv` decodes, per quote style (measured against the pinned 1.x parser). Inside double quotes:
+#: backslash, both quote marks, and a b f n r t v. Inside single quotes: only backslash and the single quote. Any other
+#: character after a backslash is left alone -- which is why a single `\t` inside double quotes is a TAB, and why a
+#: Windows path wants forward slashes (or doubled backslashes) when it is quoted.
+_DOUBLE_ESCAPES_RE = re.compile(r"\\[\\'\"abfnrtv]")
+_SINGLE_ESCAPES_RE = re.compile(r"\\[\\']")
 
 __all__ = [
     "CONFIG_FILE_NAME",
@@ -180,18 +196,30 @@ def env_file_layers(settings: object | None = None) -> tuple[str | Path, ...]:
 # ------------------------------------------------------------------------------------------------- reading a file
 
 
-def read_saved_values(path: Path) -> dict[str, str]:
-    """The `MYPKI_*` lines already in the file, as raw strings, later line winning over an earlier one.
+def _decode_value(raw: str) -> str:
+    """The value `python-dotenv` would hand to pydantic for the text after `KEY=`.
 
-    Parsed here rather than through `python-dotenv` on purpose: dotenv is present in this venv only **transitively**
-    (via pydantic-settings), and a module that writes a file it cannot guarantee it can read would be the worse
-    dependency. This parser handles the shape `render_file` produces plus comments, blank lines and `export `
-    prefixes; `Settings` reads the same file through dotenv at startup, and `test_settings_save.py` proves the two
-    readings agree on every managed knob.
+    Three shapes, decided the way dotenv decides them: a double-quoted value (quotes dropped, backslash escapes
+    decoded, a trailing `# comment` ignored), a single-quoted one (quotes dropped, only backslash and `'` decoded) and
+    an unquoted one (an inline ` # comment` dropped). Without the escape decoding, a quoted path written with doubled
+    backslashes would be reported here as having doubled separators while startup runs with single ones -- the page and
+    the process disagreeing about what one line says.
+    """
+    double = _DOUBLE_QUOTED_RE.match(raw)
+    if double is not None:
+        return _DOUBLE_ESCAPES_RE.sub(lambda m: codecs.decode(m.group(), "unicode-escape"), double.group(1))
+    single = _SINGLE_QUOTED_RE.match(raw)
+    if single is not None:
+        return _SINGLE_ESCAPES_RE.sub(lambda m: codecs.decode(m.group(), "unicode-escape"), single.group(1))
+    return re.sub(r"\s+#.*", "", raw).rstrip()
 
-    Values are returned unquoted-but-unwrapped: a surrounding pair of matching quotes is dropped (that is what
-    dotenv does, and writing `"value"` then reading `value` would be a silent edit). Whitespace inside is kept;
-    leading and trailing whitespace is not, because dotenv strips it too.
+
+def _read_raw_values(path: Path) -> dict[str, str]:
+    """The `KEY=value` lines in the file as **written** (quotes, escapes, trailing comment intact), later line winning.
+
+    The shared first half of `read_saved_values` (which decodes) and `preserve_unmanaged` (which must not: a line this
+    page does not manage has to come back out byte-for-byte, or a hand-written `MYPKI_SECRET_KEY="a #b"` would be
+    rewritten as `a #b` and read back by dotenv as `a`).
     """
     if not path.is_file():
         return {}
@@ -203,11 +231,24 @@ def read_saved_values(path: Path) -> dict[str, str]:
         match = _LINE_RE.match(line)
         if match is None:
             continue
-        name, value = match.group(1), match.group(2)
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-            value = value[1:-1]
-        values[name] = value
+        values[match.group(1)] = match.group(2)
     return values
+
+
+def read_saved_values(path: Path) -> dict[str, str]:
+    """The `KEY=value` lines already in the file, as the strings dotenv would produce; a later line wins.
+
+    Parsed here rather than through `python-dotenv` on purpose: dotenv is present in this venv only **transitively**
+    (via pydantic-settings), and a module that writes a file it cannot guarantee it can read would be the worse
+    dependency. This parser handles the shape `render_file` produces plus comments, blank lines, `export ` prefixes and
+    quoted values; `Settings` reads the same file through dotenv at startup, and `test_settings_save.py` proves the two
+    readings agree on every managed knob.
+
+    Quoted values are decoded the way dotenv decodes them (see `_decode_value`): the surrounding quotes are dropped,
+    and inside double quotes a backslash escape is resolved. Writing `"value"` then reading `value` is therefore not a
+    silent edit -- it is what startup does too. Whitespace inside the quotes is kept; whitespace outside is not.
+    """
+    return {name: _decode_value(raw) for name, raw in _read_raw_values(path).items()}
 
 
 def preserve_unmanaged(path: Path) -> list[tuple[str, str]]:
@@ -217,7 +258,9 @@ def preserve_unmanaged(path: Path) -> list[tuple[str, str]]:
     Save on a form that never displayed it. Silently dropping a line nobody asked to drop is how a settings page
     becomes dangerous.
     """
-    saved = read_saved_values(path)
+    # RAW text, not the decoded value: this is written straight back by `render_file`, and a quoted line (`"a #b"`,
+    # `"C:\\\\www"`) must keep its quotes and escapes or dotenv reads something different at the next start.
+    saved = _read_raw_values(path)
     # Compared uppercased: `render_file` always writes the canonical spelling, but a hand-edited file might carry
     # `mypki_secret_key=` or `Mypki_Host=`, and pydantic-settings matches env names case-insensitively. A line is
     # preserved unless its uppercase form is one of the knobs this page manages — so an odd-cased secret line
@@ -246,13 +289,26 @@ def render_file(values: Mapping[str, str], preserved: list[tuple[str, str]]) -> 
         "",
     ]
     for name in sorted(values):
-        lines.append(f"{name}={values[name]}")
+        lines.append(f"{name}={_dotenv_text(values[name])}")
     if preserved:
         lines.append("")
         lines.append("# Kept exactly as they were found; /settings does not edit these.")
         for name, value in preserved:
             lines.append(f"{name}={value}")
     return "\n".join(lines) + "\n"
+
+
+def _dotenv_text(value: str) -> str:
+    """`value` as it must be spelled after `KEY=` for dotenv to read it back unchanged.
+
+    Plain values stay bare, so the file stays the hand-editable `MYPKI_PORT=8543` every other document shows -- and a
+    Windows path keeps its single backslashes. Only a value dotenv would otherwise misread is wrapped in double
+    quotes (with backslash and `"` escaped): one containing `#` (an unquoted ` #` starts a comment, so `Lab #1 CA`
+    would come back as `Lab`), a quote character, or leading/trailing whitespace (dotenv strips it).
+    """
+    if value == value.strip() and not any(ch in value for ch in "#\"'"):
+        return value
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def write_settings_file(path: Path, body: str) -> None:

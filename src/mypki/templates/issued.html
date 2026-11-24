@@ -150,6 +150,7 @@
         <th scope="col">Not before (UTC)</th>
         <th scope="col">Not after (UTC)</th>
         <th scope="col">Issued at (UTC)</th>
+        <th scope="col">Revoked (UTC)</th>
       </tr>
     </thead>
     <tbody>
@@ -168,18 +169,13 @@
            it, and printing "expired" in a column whose other value is "revoked" would imply this host knows what every client
            currently accepts (store.IssuedRecord.status). The date cell carries the expiry fact instead.
 
-           0.4.0 puts the revocation stamp here rather than in its own column: a row had a Status pill AND a Revoked column
-           saying almost the same thing, and the pair could disagree if one was misread. One cell now carries the decision,
-           when it was made and why.
-
-           0.7.4 removes one word from that sentence, for the reason 0.4.0 gives for the column: the pill beside this span
-           already reads `revoked` whenever the span renders at all, so writing the word twice in one cell said it twice and
-           added nothing. What remains is the timestamp — `class="hint">` followed by `YYYY-MM-DD HH:MM:SSZ` — and the reason
-           under it. The e2e harness scrapes `class="hint">YYYY-MM-DD` from this cell, so the shape of the stamp line is still
-           a contract even though its column is gone and its leading word is. #}
+           The Status cell carries the decision's state (the pill) and, when there is one, the reason under it. WHEN the
+           decision was made is its own last column, `Revoked (UTC)`: a timestamp next to the pill made the one column
+           that is meant to be scanned for a single word carry a second fact, and a dash in this column is what says
+           "never revoked" at a glance. The e2e harness scrapes `class="revoked-at"` from that cell, so the class is a
+           contract. #}
         <td>
           <span class="pill {{ record.status }}">{{ record.status }}</span>
-          {% if record.revoked_at_utc %}<span class="hint">{{ record.revoked_at_utc.strftime('%Y-%m-%d %H:%M:%S') }}Z</span>{% endif %}
           {% if record.revocation_reason %}<div class="hint">{{ record.revocation_reason }}</div>{% endif %}
         </td>
         <td class="mono">{{ record.serial_hex }}</td>
@@ -193,6 +189,7 @@
           {% if record.is_expired %}<span class="pill expired" title="This validity window has passed on this host's UTC clock">past</span>{% endif %}
         </td>
         <td>{{ record.issued_at_utc.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+        <td class="revoked-at">{% if record.revoked_at_utc %}{{ record.revoked_at_utc.strftime('%Y-%m-%d %H:%M:%S') }}{% else %}&mdash;{% endif %}</td>
       </tr>
       {% endfor %}
     </tbody>

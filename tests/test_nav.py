@@ -13,8 +13,8 @@ CA facts, which used to be asserted against a file rather than a response).
 MEASURED on this build: `/` and `/csr/sign` share one item (`Sign CSR`) because `home()` renders the sign page, so the
 active count on both is 1; `/version` renders `about.html`, whose template sets no `path`, so **no** item is lit there —
 asserted below as 0 rather than left untested, because "the version page lights nothing" is a fact a reader would
-otherwise assume was a bug. `base.html` currently places About before Inspect PEM and Settings; this test locks that
-measured sidebar order so later edits make layout drift visible.
+otherwise assume was a bug. `base.html` places About last, below Settings; this test locks that sidebar order so later
+edits make layout drift visible.
 """
 
 from __future__ import annotations
@@ -36,9 +36,9 @@ EXPECTED_LINKS = {
     "/csr/generate": "Generate CSR",
     "/ca": "CA certificate",
     "/issued": "Issued",
-    "/about": "About",
     "/inspect": "Inspect PEM",
     "/settings": "Settings",
+    "/about": "About",
 }
 
 #: Which page template lights which nav href. `/version` is absent on purpose: `about.html` renders it with no `path`

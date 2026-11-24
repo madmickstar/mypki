@@ -2,8 +2,9 @@
 
 ![banner](assets/banner.png)
 
-![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)
 [![CI](https://github.com/madmickstar/mypki/actions/workflows/ci.yml/badge.svg)](https://github.com/madmickstar/mypki/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+![Python 3.10 | 3.11 | 3.12 | 3.13](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
 
 This is a small, browser based, self-hosted PKI app for personal and lab environments. It is not attempting to be a security product and should never be used in a production environment. It provides a convenient way to manage certificates.
 
@@ -64,8 +65,9 @@ annotated example is the file that travels with the package.
 | Variable | Default | What it costs |
 | --- | --- | --- |
 | `MYPKI_HOST` / `MYPKI_PORT` | `127.0.0.1` / `8443` | Any non-loopback host exposes signing to that network |
-| `MYPKI_DATA_DIR` | XDG on Linux, `%LOCALAPPDATA%\mypki` on Windows | Must not sit inside a web-served directory |
-| `MYPKI_SSL_CERTFILE` / `MYPKI_SSL_KEYFILE` | unset (plain HTTP) | Both or neither; setting both is what makes cookies `Secure`. Forward slashes or single backslashes on Windows — and both files must exist and be readable, or `serve` exits 1 naming which one |
+| `MYPKI_DATA_DIR` | `.data` in `.env.example` (relative to the working directory, so `/opt/mypki/.data` when the app runs from `/opt/mypki`); without it, XDG on Linux, `%LOCALAPPDATA%\mypki` on Windows | Must not sit inside a web-served directory; a relative path moves if the supervisor changes `WorkingDirectory` |
+| `MYPKI_CONFIG_DIR` | `.config` in `.env.example`; without it, `$XDG_CONFIG_HOME/mypki` or `~/.config/mypki` (`%APPDATA%\mypki` on Windows) | Holds `mypki.env`, the file `/settings` writes |
+| `MYPKI_SSL_CERTFILE` / `MYPKI_SSL_KEYFILE` | unset (plain HTTP) | Both or neither; setting both is what makes cookies `Secure`. Forward slashes on Windows (inside the double quotes `.env.example` uses, a backslash must be doubled) — and both files must exist and be readable, or `serve` exits 1 naming which one |
 | `MYPKI_CA_CN` | `mypki Root CA` | Changing it later means re-issuing the CA and re-installing it everywhere |
 | `MYPKI_VALIDITY_DEFAULT_DAYS` / `MYPKI_VALIDITY_MAX_DAYS` | 365 / 1461 | The main bound on a mistake that needs no cooperation from the client: a CRL entry or an OCSP answer counts only for a client that consults one, so a wrong certificate stays trusted until it expires |
 | `MYPKI_CRL_BASE_URL` | `http://mypki.my.lab` | The absolute base baked into new leaves as their CRL/OCSP pointer and advertised on `/crl`. Must start with `http://` or `https://`; must resolve where the clients are; changing it changes only certificates issued **after** the change |
@@ -92,7 +94,7 @@ How those files are protected — POSIX modes that are asserted after the write,
 Windows, and what protects the key instead — is stated in full in
 [docs/REFERENCE.md](docs/REFERENCE.md#key-protection-and-the-data-directory).
 
-The tree this repository actually ships, taken from `git ls-files --cached --exclude-standard --others` at this commit (76 paths):
+The tree this repository actually ships, taken from `git ls-files --cached --exclude-standard --others` at this commit (77 paths):
 
 ```
 mypki/
@@ -154,6 +156,7 @@ mypki/
 │   ├── test_crl.py
 │   ├── test_csr_generate.py
 │   ├── test_csr_validate.py
+│   ├── test_env_example.py
 │   ├── test_fast_lane.py
 │   ├── test_inspect.py
 │   ├── test_keys.py

@@ -23,7 +23,10 @@ found" ([REFERENCE.md](REFERENCE.md#what-it-does) records the whole exit-code ta
 
 Precedence, for both directories: `--data-dir` > `MYPKI_DATA_DIR` > OS default.
 
-- Default data dir on Linux: `$XDG_DATA_HOME/mypki`, else `~/.local/share/mypki`.
+- `.env.example` sets `MYPKI_DATA_DIR=".data"` and `MYPKI_CONFIG_DIR=".config"`: relative paths that resolve against the
+  working directory, so an app running from `/opt/mypki` keeps its files in `/opt/mypki/.data` and `/opt/mypki/.config`
+  (both gitignored). Make sure the service's `WorkingDirectory` is the app directory, or use absolute paths.
+- Default data dir on Linux when neither is set: `$XDG_DATA_HOME/mypki`, else `~/.local/share/mypki`.
 - Default config dir (where `/settings` writes `mypki.env`): `$XDG_CONFIG_HOME/mypki`, else `~/.config/mypki`.
 - For a service account, set the data dir explicitly and put it somewhere you can back up:
 

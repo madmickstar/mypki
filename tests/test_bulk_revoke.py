@@ -240,7 +240,14 @@ def test_a_stamped_row_offers_no_checkbox_and_the_reason_shows_in_its_status_cel
     assert f'<input type="checkbox" name="serial_hex" value="{SERIAL_TWO}"' in listing.text
     assert '<span class="pill revoked">revoked</span>' in listing.text
     assert "wrong SANs" in listing.text
-    assert re.search(r'<span class="hint">\d{4}-\d{2}-\d{2}', listing.text)
+    # The stamp date is NOT in the Status cell any more: it has its own last column; an unrevoked row shows a dash.
+    assert not re.search(r'<span class="hint">\d{4}-\d{2}-\d{2}', listing.text)
+    headers = re.findall(r'<th scope="col">(.*?)</th>', listing.text, re.DOTALL)
+    assert headers[-1] == "Revoked (UTC)", headers
+    revoked_cells = re.findall(r'<td class="revoked-at">(.*?)</td>', listing.text, re.DOTALL)
+    stamped = [c for c in revoked_cells if re.fullmatch(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", c)]
+    assert len(stamped) == 1, revoked_cells
+    assert revoked_cells.count("&mdash;") == len(revoked_cells) - 1, revoked_cells
 
 
 # --------------------------------------------------------------------------- a batch that mixes all three outcomes

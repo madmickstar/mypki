@@ -1492,14 +1492,23 @@ def section_11(app: Harness) -> None:
         after_body,
         f'name="serial_hex" value="{row_serial}"',
     )
-    dated = count_re(after_body, r'class="hint">[0-9]{4}-[0-9]{2}-[0-9]{2}')
-    # Only the SHAPE of the stamp line is pinned (class="hint"> plus a YYYY-MM-DD prefix): pinning the whole line would
-    # make this about formatting rather than about whether the decision is still visible after a refresh.
-    app.check(f"the Status cell reads as a dated decision (a hint span opening 'YYYY-MM-DD…', {dated})", dated >= 3)
-    app.count_zero(
-        "the list has no separate Revoked column any more (the stamp lives in the Status cell)",
-        after_body,
-        '<th scope="col">Revoked</th>',
+    stamp = r"[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}"
+    dated = count_re(after_body, rf'<td class="revoked-at">{stamp}</td>')
+    # Only the SHAPE of the stamp is pinned (a revoked-at cell holding a UTC date and time): pinning the whole line
+    # would make this about formatting rather than about whether the decision is still visible after a refresh.
+    app.check(
+        f"the Revoked (UTC) column reads as a dated decision (revoked-at cells holding a timestamp, {dated})",
+        dated >= 3,
+    )
+    # No never-revoked row is guaranteed at this point of the walk (every seeded record may have been stamped), so
+    # the dash for an unrevoked row is asserted in tests/test_bulk_revoke.py, where the fixture keeps one row active.
+    app.check(
+        "the list ends in exactly one Revoked (UTC) column",
+        count(after_body, '<th scope="col">Revoked (UTC)</th>') == 1,
+    )
+    app.check(
+        "the Status cell no longer carries the stamp date (no hint span opening 'YYYY-MM-DD')",
+        count_re(after_body, r'class="hint">[0-9]{4}-[0-9]{2}-[0-9]{2}') == 0,
     )
 
     # PUBLISH THE SERIALS THIS WALK ACTUALLY STAMPED. `openssl_checks` (§11 STEP F's external half) reads

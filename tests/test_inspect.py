@@ -1313,3 +1313,18 @@ def test_the_inspect_page_needs_no_ca(client_without_ca) -> None:
     assert response.status_code == 200
     assert "nothing readable" in response.text
     assert "Run `mypki init-ca`" not in response.text
+
+
+# ----------------------------------------------------------------------------- the page's own furniture
+
+
+def test_the_paste_card_has_the_blue_settings_style_title_and_the_page_has_no_lede(session_client) -> None:
+    """`Paste PEM` is a `.section-heading` above the paste card, as on /settings; only the form sits under the title."""
+    page = session_client.get("/inspect").text
+
+    assert "<h1>Inspect a PEM</h1>" in page
+    assert 'class="lede"' not in page
+    assert '<h2 class="section-heading" id="pem_paste_title">Paste PEM</h2>' in page
+    assert page.count(">Paste PEM<") == 1
+    assert 'aria-labelledby="pem_paste_title"' in page
+    assert page.index("Paste PEM") < page.index('name="pem_paste"') < page.index("It does not verify a chain.")

@@ -1248,7 +1248,9 @@ def test_a_record_can_be_revoked_from_the_issued_page_and_says_what_that_does_no
     assert again.status_code == 200
     assert '<span class="pill revoked">revoked</span>' in again.text
     assert 'class="pill active"' not in again.text
-    assert re.search(r'<span class="hint">\d{4}-\d{2}-\d{2}', again.text)
+    # The date of the decision is the last column (`Revoked (UTC)`), not a second fact in the Status cell.
+    assert re.search(r'<td class="revoked-at">\d{4}-\d{2}-\d{2}', again.text)
+    assert not re.search(r'<span class="hint">\d{4}-\d{2}-\d{2}', again.text)
 
 
 def test_a_revoke_for_an_unknown_serial_is_404_naming_the_serial_and_the_database(

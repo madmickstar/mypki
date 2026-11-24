@@ -219,16 +219,26 @@
     input.addEventListener("input", syncFromBox);
   }
 
-  // The on/off word beside a checkbox. The server renders it already correct; this only keeps it correct while the box
-  // is being ticked, so the colour never disagrees with the control next to it.
+  // The on/off state beside a checkbox. The server renders it already correct; this only keeps it correct while the box
+  // is being toggled, so the colour never disagrees with the control next to it. Two shapes share this wiring: the plain
+  // coloured word (`.checkbox-state`, used by the consent box on /csr/sign) and the chip beside /settings' switch
+  // (`[data-mypki-state-pill]`, which reuses the `.pill.active` / `.pill.revoked` colours).
   function wireCheckboxState(field) {
     var box = field.querySelector("input[data-mypki-state-toggle]");
     var state = field.querySelector(".checkbox-state");
-    if (!box || !state) return;
+    var pill = field.querySelector("[data-mypki-state-pill]");
+    if (!box || (!state && !pill)) return;
     box.addEventListener("change", function () {
-      state.textContent = box.checked ? "on" : "off";
-      state.classList.toggle("state-on", box.checked);
-      state.classList.toggle("state-off", !box.checked);
+      if (state) {
+        state.textContent = box.checked ? "on" : "off";
+        state.classList.toggle("state-on", box.checked);
+        state.classList.toggle("state-off", !box.checked);
+      }
+      if (pill) {
+        pill.textContent = box.checked ? "on" : "off";
+        pill.classList.toggle("active", box.checked);
+        pill.classList.toggle("revoked", !box.checked);
+      }
     });
   }
 

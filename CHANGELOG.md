@@ -27,6 +27,52 @@ check*, which is never a pass. A section below is written **when its release is 
 that has not shipped is exactly what `check_version.py` reports as drift, because it reads to a user as a promise about a
 release that does not exist.
 
+## [0.7.5] - 2026-11-24
+
+### Changed
+
+- **`.env.example` is rewritten for readability; no knob changed meaning.** Every value is wrapped in double quotes
+  (`MYPKI_PORT="8443"`, an empty value is `""`), including the commented-out examples. Section titles are three-line banners
+  (rule, title, rule) instead of a title glued to the end of a rule. `CSR subject prefills` lists its comments first and its six
+  variables after them. The TLS-path note now says what is true once values are quoted: use forward slashes, because inside double
+  quotes a backslash is an escape (`"C:\root_apps"` is read as `C:` + carriage return + `oot_apps`); doubled backslashes belong
+  inside quotes, and doubled backslashes in an *unquoted* value remain the mistake `mypki serve` reports before it binds.
+- **`MYPKI_DATA_DIR=".data"` and `MYPKI_CONFIG_DIR=".config"` are live in `.env.example`**, and both directories are gitignored.
+  Relative paths resolve against the working directory, exactly as `MYPKI_LOG_FILE` does, so an app run from `/opt/mypki` keeps
+  its state in `/opt/mypki/.data` and `/opt/mypki/.config`. **The built-in defaults are unchanged** (the OS directories), so an
+  install that never copied the example keeps finding its CA; an install that copies the new example while a service unit sets a
+  different `WorkingDirectory` will look for its state there instead. The config-dir comment no longer says mypki reads no
+  config file from it: it holds `mypki.env`, which `/settings` writes and startup reads back.
+- **The side menu ends with About**, below Settings.
+- **README banner badges**: the Ruff badge is gone; License (MIT) and Python (3.10–3.13, matching `requires-python` and the CI
+  matrix) badges sit beside the CI badge.
+- **`/inspect`**: the sentence under the title is gone, and `Paste PEM` is a blue section title above the paste card, styled as
+  every card title on `/settings` is. It names the textarea through `aria-labelledby`. The limits card below the form is unchanged
+  word for word and no longer carries a heading.
+- **`/settings`**: `MYPKI_LOG_TO_CONSOLE` is a switch with an `on` / `off` chip beside it, reusing the `.pill.active` and
+  `.pill.revoked` colours. The control underneath is still a checkbox posting `value="true"`, so keyboard, label click and a
+  browser with no script behave as before; `app.js` only repaints the chip. The bare coloured word is still what the consent box on
+  `/csr/sign` uses.
+- **`/issued`**: the Status cell no longer repeats the revocation date; it holds the pill and, when there is one, the reason. The
+  date is a new last column, `Revoked (UTC)` (`<td class="revoked-at">`), with a dash for a record that was never revoked. The
+  harness and the two tests that scraped `class="hint">YYYY-MM-DD` now scrape that cell.
+
+### Fixed
+
+- **A quoted value in `mypki.env` is read the way startup reads it, and a line `/settings` does not manage is written back as
+  found.** `settingsfile.read_saved_values` dropped quotes but did not decode escapes or ignore a trailing `# comment`, and
+  `preserve_unmanaged` re-wrote the decoded text bare: a hand-written `MYPKI_SECRET_KEY="a #b"` came back as `a #b`, which dotenv reads
+  as `a`. Reading now decodes exactly what `python-dotenv` decodes, preservation is byte-for-byte, and a *managed* value dotenv would
+  misread (one containing `#` or a quote, or edged with whitespace) is written in double quotes. Plain values, and Windows paths with
+  single backslashes, are still written bare.
+- The doubled-separator hint printed by `mypki serve` no longer recommends single backslashes unconditionally; it says single ones
+  work unquoted and must be doubled inside double quotes.
+
+### Added
+
+- `tests/test_env_example.py`: the example's quoting, banners, comment order, the two directory defaults and the `.gitignore` entries are
+  asserted, and the quoted file is proved to load to the same `Settings` as the unquoted one.
+
 ## [0.7.4] - 2026-11-10
 
 ### Changed
@@ -914,7 +960,8 @@ only the per-release *files* are gone.
 - **[0.2.0]** - 2026-10-28 - `bc0031b^:docs/history/0.2.0.md`
 - **[0.1.0]** - 2026-10-26 - `bc0031b^:docs/history/0.1.0.md`
 
-[Unreleased]: https://github.com/madmickstar/mypki/compare/v0.7.4...HEAD
+[Unreleased]: https://github.com/madmickstar/mypki/compare/v0.7.5...HEAD
+[0.7.5]: https://github.com/madmickstar/mypki/releases/tag/v0.7.5
 [0.7.4]: https://github.com/madmickstar/mypki/releases/tag/v0.7.4
 [0.7.3]: https://github.com/madmickstar/mypki/releases/tag/v0.7.3
 [0.7.2]: https://github.com/madmickstar/mypki/releases/tag/v0.7.2

@@ -712,8 +712,8 @@ def _separator_hint(text: str, resolved: Path | None = None) -> str:
     lines = [
         "",
         "  That path contains doubled separators. In the saved file and in .env, write it with forward slashes",
-        "  (C:/root_apps/mypki-data/www/server.crt) or single backslashes",
-        "  (C:\\root_apps\\mypki-data\\www\\server.crt).",
+        "  (C:/root_apps/mypki-data/www/server.crt). Backslashes also work: single ones in an unquoted value",
+        "  (C:\\root_apps\\mypki-data\\www\\server.crt), but each one doubled inside double quotes.",
     ]
     # Windows is where this matters most and where the operator can least see it: what `Path` resolved to is not what
     # they wrote, and printing only the resolved form hides the mistake that produced it.

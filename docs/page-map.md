@@ -732,13 +732,12 @@ whoever issued it; `/issued`'s Status column has the same limit.
 not opened*. SMOKE_TESTING §15 asserts all four sentences still appear on the rendered page, because a reader who assumed otherwise would be
 misled by a page that looks like a verifier.
 
-**Where that card sits (0.7.4).** The four sentences are a `<section class="card settings-section">` preceded by a blue
-`<h2 class="section-heading">Paste PEM</h2>` — the heading-plus-card pair `/settings`, `/ca` and `/csr/generate` already use (§12) —
-and they now sit **below** the form rather than above it. The order is the point: this page has exactly one control, and until 0.7.4
-the first thing an operator met was four sentences about what the page cannot do, before the box they came to fill. The four sentences
-themselves are unchanged word for word, which is why §13's per-sentence harness counts still hold; only their position moved. Nothing in
-this build asserts the order as an offset — no test compares a card offset against the textarea on `/inspect` — so what pins the move is
-the wording of this paragraph and the card's own Jinja comment, not a gate.
+**Where that card sits (0.7.5).** The four sentences are a bare `<section class="card settings-section">` with no heading of its own, and they sit **below** the form.
+The page has no lede under its title and the heading that used to sit above this card now lives where it is useful: it is the label
+of the paste box itself (`<h2 class="section-heading">Paste PEM</h2>` above a `.card.settings-section` holding the textarea, styled exactly as /settings' card titles). The order is the point: this page has exactly one control, so the first thing an operator meets is the
+box they came to fill, not four sentences about what the page cannot do. No test compares a card offset against the textarea on `/inspect`,
+so what pins the order is the wording of this paragraph and the card's own Jinja comment, not a gate. (0.7.4 had put the
+`Paste PEM` heading above the limits card; 0.7.5 moves it above the paste card, where it is styled as every card title on `/settings` is.)
 
 **Private keys are named, never opened.** `redact_private_key_bodies(paste)` returns the paste with each key **body** replaced by
 `KEY_BODY_REDACTED`, plus a count; the armour lines stay, so the operator can see *which* block was redacted. Recognition is by armour only
@@ -776,7 +775,7 @@ signed, and its width is part of how the sign page reads. `/csr/generate` joined
 0.1.0, so `width: 100%` on a textarea needs no padding arithmetic. Nothing here can show what this looks like: no browser exists on the host these
 notes were written on, so SMOKE_TESTING §2 asserts only that **the served stylesheet carries the three rules**.
 
-**Nav.** The seventh link (`base.html`, between About and Settings) is plain markup with an inline SVG icon, and `app.js` gained nothing for it
+**Nav.** The seventh link (`base.html`, between Issued and Settings; About is last, below Settings) is plain markup with an inline SVG icon, and `app.js` gained nothing for it
 beyond the copy button it already provided. `tests/test_nav.py` exists because a route can be registered, render perfectly, and still be
 unfindable: `base.html` decides which item is `.active` by comparing `request.url.path` against a literal written in the template.
 

@@ -80,6 +80,10 @@ logs/
 *.log
 *.log.[0-9]*
 /data/
+# Default `MYPKI_DATA_DIR` / `MYPKI_CONFIG_DIR` in .env.example: relative paths, so they land inside the app directory. The data
+# dir holds the CA private key and the issued ledger; the config dir holds `mypki.env`, which may carry a hand-written secret.
+.data/
+.config/
 instance/
 issued.db
 issued.db-*

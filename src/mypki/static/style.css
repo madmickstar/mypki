@@ -465,6 +465,51 @@ form.inspect-form button.save-settings { max-width: none; }
 .checkbox-state.state-on { color: var(--green); }
 .checkbox-state.state-off { color: var(--rose); }
 
+/* The on/off switch on /settings (MYPKI_LOG_TO_CONSOLE). The real <input type="checkbox"> stays in the DOM, stretched
+   invisibly over the track, so clicking, the label, Space on keyboard focus and a browser with no script all behave as
+   they would for a plain box; the track and knob are drawn from the checkbox's own `:checked` state, not from script.
+   Colours are the `.pill.active` / `.pill.revoked` pair, so the switch and the chip beside it always agree. The selector
+   starts with `.settings-form .field` on purpose: `.settings-form .field input` (width 100%, a dark fill) would
+   otherwise resize the hidden box. */
+.switch-line { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.35rem; }
+
+.settings-form .field .switch { position: relative; display: inline-block; flex: none; width: 2.6rem; height: 1.45rem; margin: 0; }
+.settings-form .field .switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+.switch-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1px solid #5c2226;
+  background: #1b0f11;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0.2rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--rose);
+  transform: translateY(-50%);
+  transition: left 0.15s ease, background 0.15s ease;
+}
+.switch input:checked + .switch-track { border-color: #1d4b3a; background: #0f1b18; }
+.switch input:checked + .switch-track::after { left: calc(100% - 1.2rem); background: var(--green); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--blue); outline-offset: 2px; }
+
 /* The Issuing-limits dropdowns (0.4.0). Progressive enhancement, stated in CSS rather than in the script:
    with no script the <select> is hidden and the authoritative number box is what you edit — a menu that cannot
    constrain a text box is decoration. When app.js runs it opens `.custom-open` on the field, which reveals both,

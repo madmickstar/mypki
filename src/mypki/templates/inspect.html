@@ -17,25 +17,22 @@
 
 <h1>Inspect a PEM</h1>
 
-<p class="lede">
-Paste a certificate or a certificate signing request and read what it actually says: subject, issuer, SANs, key and its
-size, validity window, serial, fingerprint and signature algorithm — plus the things that matter out loud, like
-<em>expired</em>, <em>self-signed</em>, <em>not a CA</em> or <em>signed with SHA-1</em>. This page never refuses anything
-and never changes anything: it is a reader, not a verifier.
-</p>
-
-{# `settings-form stacked` is what 0.5.0 borrowed from /settings to get the uppercase label band and the hint styling.
-   `inspect-form` exists for one purpose: to scope the width rules in style.css to this page and this page alone, so the
-   paste box can span its section (page-map §13). Widening `.settings-form` instead would widen every field on /settings. #}
+{# `settings-form stacked` borrows /settings' uppercase label band and hint styling. `inspect-form` exists for one
+   purpose: to scope the width rules in style.css to this page and this page alone, so the paste box can span its
+   section. Widening `.settings-form` instead would widen every field on /settings. #}
 <form method="post" action="/inspect" class="settings-form stacked inspect-form">
   {{ csrf_field(request) | safe }}
-  <div class="field">
-    <label for="pem_paste">PEM</label>
-    <textarea id="pem_paste" name="pem_paste" rows="14" spellcheck="false"
-              placeholder="-----BEGIN CERTIFICATE-----&#10;MIID...&#10;-----END CERTIFICATE-----">{{ paste }}</textarea>
-    <p class="hint">A certificate, a CA certificate or a request. Up to {{ max_csr_chars }} characters; up to
-      {{ max_blocks }} blocks are described, and anything past that is counted rather than dropped.</p>
-  </div>
+  {# The title is /settings' own: a blue `.section-heading` above a `.card.settings-section`. It names the textarea through
+     `aria-labelledby`, so a screen reader still hears "Paste PEM" without a second visible label repeating it. #}
+  <h2 class="section-heading" id="pem_paste_title">Paste PEM</h2>
+  <section class="card settings-section">
+    <div class="field">
+      <textarea id="pem_paste" name="pem_paste" rows="14" spellcheck="false" aria-labelledby="pem_paste_title"
+                placeholder="-----BEGIN CERTIFICATE-----&#10;MIID...&#10;-----END CERTIFICATE-----">{{ paste }}</textarea>
+      <p class="hint">A certificate, a CA certificate or a request. Up to {{ max_csr_chars }} characters; up to
+        {{ max_blocks }} blocks are described, and anything past that is counted rather than dropped.</p>
+    </div>
+  </section>
   <button class="save-settings" type="submit">Inspect</button>
 </form>
 
@@ -45,7 +42,6 @@ and never changes anything: it is a reader, not a verifier.
    the one control it has. The four sentences are unchanged, word for word: they are this page's honesty contract, asserted
    as rendered text in `tests/test_inspect.py` and one-per-sentence in the harness's §15, so rewording any of them is a
    three-file change rather than a tidy-up. #}
-<h2 class="section-heading">Paste PEM</h2>
 <section class="card settings-section">
   <ul class="profile-help">
     <li><strong>It does not verify a chain.</strong> There is no trust store on this host and no issuer certificate to check

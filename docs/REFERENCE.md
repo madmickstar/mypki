@@ -60,7 +60,8 @@ dir as something you back up offline, and treat `--encrypt` as insurance against
 against you forgetting the passphrase.
 
 **2. Revocations are recorded, published — and honoured only by clients that go looking.** `/issued` can mark a record
-revoked — serial, UTC timestamp and an optional reason, stored in `issued.db`, shown in a Status column. From 0.7.0 that
+revoked — serial, UTC timestamp and an optional reason, stored in `issued.db`; the Status column shows the state and the reason, and the
+last column, `Revoked (UTC)`, shows when (a dash for a record that was never revoked). From 0.7.0 that
 decision is also **published**: `<data>/crl/revoke.crl` is re-signed on startup, after every batch that stamps
 something, and on the Rebuild button at `/crl`, and `POST /ocsp` answers GOOD / REVOKED / UNKNOWN for a serial. What has
 **not** changed is the client side, and these four facts are measured rather than assumed:
@@ -99,9 +100,11 @@ There are no logins, so exposure is controlled by binding, TLS and network place
   above is the sentence that applies. Session cookies become `Secure` only when **both** TLS knobs are set
   (`settings.tls_enabled`), so a proxy-terminated setup does not get `Secure` cookies from mypki itself — put them on the
   proxy instead.
-- **Write a Windows TLS path with forward slashes, or with single backslashes.** In `.env` and in the file `/settings`
-  saves, `MYPKI_SSL_CERTFILE=C:/root_apps/mypki-data/www/server.crt` and
-  `MYPKI_SSL_CERTFILE=C:\root_apps\mypki-data\www\server.crt` both work; `C:\\root_apps\\…` does not. A dotenv line is
+- **Write a Windows TLS path with forward slashes** (`MYPKI_SSL_CERTFILE="C:/root_apps/mypki-data/www/server.crt"`). Values in
+  `.env` may be wrapped in double quotes, as `.env.example` writes them, and inside the quotes a backslash is an escape
+  character: a quoted path needs each backslash doubled (`"C:\\root_apps\\…"`) and a single one is misread (`\r` becomes a
+  carriage return). Unquoted, single backslashes work and doubled ones do not:
+  `MYPKI_SSL_CERTFILE=C:\root_apps\mypki-data\www\server.crt` works; unquoted `C:\\root_apps\\…` does not. A dotenv line is
   not a PowerShell string — doubling the separators is passed through verbatim, so mypki resolves a path that exists
   nowhere. Since 0.4.0 `mypki serve` checks both TLS files before binding and exits 1 naming the knob and the path
   (`config error: MYPKI_SSL_CERTFILE points at a file that does not exist: …`); before that, the same mistake surfaced

@@ -1112,3 +1112,108 @@ def test_a_save_the_process_cannot_adopt_says_so_instead_of_claiming_success(
     # The boxes show what was typed, because this process is no longer running those values.
     assert 'value="30"' in second.text
     monkeypatch.delenv("MYPKI_MAX_SANS", raising=False)
+
+
+# ------------------------------------------------------------------ quoted values: reading, preserving, writing
+
+
+QUOTED_FILE = (
+    'MYPKI_PORT="9443"\n'
+    "MYPKI_CA_CN='single # quoted'\n"
+    'MYPKI_SECRET_KEY="a #b \\"q\\" \\\\x"\n'
+    'MYPKI_LOG_FILE=""\n'
+    'MYPKI_SSL_CERTFILE="C:\\\\www\\\\server.crt"  # a trailing comment\n'
+    "MYPKI_MAX_SANS=5 # an unquoted trailing comment\n"
+    'export MYPKI_HOST = "10.0.0.1"\n'
+)
+
+
+def test_the_own_parser_reads_quoted_values_exactly_as_dotenv_does(tmp_path: Path) -> None:
+    """Quotes are dropped, escapes are decoded and trailing comments are ignored -- the same answers startup gets.
+
+    The own parser exists so `/settings` can describe a file without trusting a transitive dependency, which only
+    works if it never disagrees with that dependency about what a line says.
+    """
+    from dotenv import dotenv_values
+
+    path = tmp_path / "mypki.env"
+    path.write_text(QUOTED_FILE, encoding="utf-8")
+
+    parsed = read_saved_values(path)
+
+    assert parsed == {key: value or "" for key, value in dotenv_values(path).items()}
+    assert parsed["MYPKI_PORT"] == "9443"
+    assert parsed["MYPKI_SSL_CERTFILE"] == "C:\\www\\server.crt"
+    assert parsed["MYPKI_LOG_FILE"] == ""
+    assert parsed["MYPKI_MAX_SANS"] == "5"
+
+
+def test_a_quoted_unmanaged_line_survives_a_save_byte_for_byte(tmp_path: Path) -> None:
+    """Re-writing `"a #b"` as `a #b` would make dotenv read `a`: a hand-written secret changed by pressing Save."""
+    from dotenv import dotenv_values
+
+    path = tmp_path / "mypki.env"
+    path.write_text(QUOTED_FILE, encoding="utf-8")
+    before = dotenv_values(path)
+
+    preserved = preserve_unmanaged(path)
+    body = render_file({"MYPKI_PORT": "8543"}, preserved)
+    path.write_text(body, encoding="utf-8")
+    after = dotenv_values(path)
+
+    assert 'MYPKI_SECRET_KEY="a #b \\"q\\" \\\\x"' in body
+    assert after["MYPKI_SECRET_KEY"] == before["MYPKI_SECRET_KEY"] == 'a #b "q" \\x'
+    assert after["MYPKI_SSL_CERTFILE"] == before["MYPKI_SSL_CERTFILE"]
+    assert after["MYPKI_PORT"] == "8543"
+
+
+def test_a_managed_value_dotenv_would_misread_is_quoted_when_written_and_plain_ones_are_not(tmp_path: Path) -> None:
+    from dotenv import dotenv_values
+
+    awkward = 'Lab #1 "X" \\ CA'
+    body = render_file({"MYPKI_CA_CN": awkward, "MYPKI_PORT": "8443", "MYPKI_LOG_FILE": "C:\\logs\\mypki.log"}, [])
+    path = tmp_path / "mypki.env"
+    path.write_text(body, encoding="utf-8")
+
+    assert "MYPKI_PORT=8443\n" in body
+    assert "MYPKI_LOG_FILE=C:\\logs\\mypki.log\n" in body
+    assert dotenv_values(path)["MYPKI_CA_CN"] == awkward
+    assert read_saved_values(path)["MYPKI_CA_CN"] == awkward
+    assert Settings(_env_file=str(path)).ca_cn == awkward  # type: ignore[call-arg]
+
+
+def test_a_hand_quoted_settings_file_is_what_startup_runs_with(tmp_path: Path) -> None:
+    path = tmp_path / "mypki.env"
+    path.write_text('MYPKI_PORT="9443"\nMYPKI_LOG_TO_CONSOLE="false"\nMYPKI_CA_CN="Quoted CA"\n', encoding="utf-8")
+
+    settings = Settings(_env_file=str(path))  # type: ignore[call-arg]
+
+    assert (settings.port, settings.log_to_console, settings.ca_cn) == (9443, False, "Quoted CA")
+
+
+# ----------------------------------------------------- the log-to-console switch and its on/off chip
+
+
+def test_the_console_logging_knob_is_a_switch_with_an_on_chip_by_default(client_without_ca: TestClient) -> None:
+    page = client_without_ca.get("/settings").text
+
+    assert '<label class="switch">' in page
+    assert '<span class="switch-track"' in page
+    assert re.search(
+        r'<input[^>]*type="checkbox"[^>]*role="switch"[^>]*name="MYPKI_LOG_TO_CONSOLE"[^>]*value="true"', page
+    )
+    assert '<span class="pill active" data-mypki-state-pill>on</span>' in page
+    assert '<span class="pill revoked" data-mypki-state-pill>off</span>' not in page
+    # The old bare word is gone from this page (it is still what the consent box on /csr/sign uses).
+    assert 'class="checkbox-state' not in page
+
+
+def test_an_unticked_switch_renders_an_off_chip_in_the_revoked_colours(settings_client: TestClient) -> None:
+    body = _full_form()
+    del body["MYPKI_LOG_TO_CONSOLE"]
+    response = _post_settings(settings_client, **body)
+
+    assert response.status_code == 200
+    assert '<span class="pill revoked" data-mypki-state-pill>off</span>' in response.text
+    assert '<span class="pill active" data-mypki-state-pill>on</span>' not in response.text
+    assert not re.search(r'name="MYPKI_LOG_TO_CONSOLE"[^>]*\schecked', response.text)

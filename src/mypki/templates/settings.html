@@ -109,10 +109,17 @@ on screen at once instead of one being inferred from the other.
            `MYPKI_LOG_TO_CONSOLE=true` is the spelling every other mypki document uses. An unticked checkbox posts nothing at
            all, which `app._submitted_settings_fields` turns into an explicit `false`, so "off" is a written decision rather
            than an absent line that silently reverts to mypki's default. #}
-        <label class="checkbox-line">
-          <input id="f_{{ field.name }}" type="checkbox" name="{{ field.knob }}" value="true"{% if field.value %} checked{% endif %} data-mypki-state-toggle>
-          <span class="checkbox-state {{ 'state-on' if field.value else 'state-off' }}">{{ 'on' if field.value else 'off' }}</span>
-        </label>
+        {# A switch rather than a bare box, with the state as the same chip `/issued` uses for a status: `on` is the green
+           `.pill.active`, `off` the rose `.pill.revoked`. The control underneath is still a plain checkbox (the track is
+           CSS drawn over it), so keyboard, label-click and a browser that runs no script all keep working, and the
+           posted name and value are unchanged. app.js only repaints the chip as the switch moves. #}
+        <div class="switch-line">
+          <label class="switch">
+            <input id="f_{{ field.name }}" type="checkbox" role="switch" name="{{ field.knob }}" value="true"{% if field.value %} checked{% endif %} data-mypki-state-toggle>
+            <span class="switch-track" aria-hidden="true"></span>
+          </label>
+          <span class="pill {{ 'active' if field.value else 'revoked' }}" data-mypki-state-pill>{{ 'on' if field.value else 'off' }}</span>
+        </div>
         {% if field.pending_saved %}{{ pending_saved(field) }}{% endif %}
         <p class="hint">{{ field.hint }}</p>
       </div>
